@@ -1,7 +1,0 @@
-README.md
-setup.py
-vsa_ogm.egg-info/PKG-INFO
-vsa_ogm.egg-info/SOURCES.txt
-vsa_ogm.egg-info/dependency_links.txt
-vsa_ogm.egg-info/requires.txt
-vsa_ogm.egg-info/top_level.txt
