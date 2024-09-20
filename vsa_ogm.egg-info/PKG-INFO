@@ -1,0 +1,19 @@
+Metadata-Version: 2.1
+Name: vsa_ogm
+Version: 0.0.1
+Summary: Occupancy Grid Mapping with Hyperdimensional Computing
+Home-page: https://github.com/shaymeister/highfrost
+Author: Shay Snyder
+Author-email: ssnyde9@gmu.edu
+Keywords: vector symbolic architectures,hyperdimensional computing
+Classifier: Development Status :: 3 - Alpha
+Requires-Dist: matplotlib
+Requires-Dist: numpy
+Requires-Dist: omegaconf
+Requires-Dist: opencv-python
+Requires-Dist: pandas
+Requires-Dist: pyntcloud
+Requires-Dist: pyyaml
+Requires-Dist: scikit-learn
+Requires-Dist: scikit-image
+Requires-Dist: tqdm
