@@ -1,4 +1,4 @@
-## Semantic Pointer Library - PRIVATE
+## Semantic Pointer Library
 
 A Python-based library for developing and applying semantic pointers with CUDA acceleration.
 
@@ -46,6 +46,14 @@ The initial version and foundations of SPL was heavily inspired by the teachings
 If you find our work useful in your research endeavors, we would appreciate if you would consider citing [our paper](.):
 
 ```text
-TODO
+@misc{snyder2024braininspiredprobabilisticoccupancy,
+      title={Brain Inspired Probabilistic Occupancy Grid Mapping with Hyperdimensional Computing}, 
+      author={Shay Snyder and Andrew Capodieci and David Gorsich and Maryam Parsa},
+      year={2024},
+      eprint={2408.09066},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2408.09066}, 
+}
 ```
 
