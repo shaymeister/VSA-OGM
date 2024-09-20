@@ -27,10 +27,6 @@ def encode_cartesian(axis_values: torch.tensor,
         bound into hyperdimensional space; shape = (num_axes, num_vsa_dims)
     """
 
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
-
     assert axis_values.shape[0] == axis_basis_vectors.shape[0]
 
     ubvm = torch.zeros_like(axis_basis_vectors, device=device)

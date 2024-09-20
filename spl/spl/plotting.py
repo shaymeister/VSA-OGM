@@ -29,10 +29,6 @@ def plot_1d_numpy(
     - None
 
     """
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
-
     if clear_figure:
         plt.clf()
 
@@ -83,10 +79,6 @@ def plot_quadrant_boundaries(
         show_plot (bool, optional): Whether to display the plot.
             Defaults to False.
     """
-    
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
 
     if isinstance(qb_x, torch.Tensor):
         qb_x = qb_x.detach().cpu().numpy()
@@ -166,10 +158,6 @@ def plot_quadrant_centers(
     Returns:
         None
     """
-
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
 
     if isinstance(qcs, torch.Tensor):
         qcs = qcs.detach().cpu().numpy()
@@ -255,10 +243,6 @@ def plot_2d_heatmap_queried(plane_matrix: torch.tensor,
     None
     """
 
-    # -----------------------------
-    # TODO Add Argument Validation
-    # --------------------------
-
     if isinstance(plane_matrix, torch.Tensor):
         plane_matrix = plane_matrix.detach().cpu().numpy()
 
@@ -311,10 +295,6 @@ def plot_2d_heatmap_unqueried(query: torch.tensor, plane_matrix: torch.tensor,
     --------
     None
     """
-
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
 
     hm = torch.tensordot(query, plane_matrix, dims=([0], [2]))
     hm = hm.cpu().numpy().T

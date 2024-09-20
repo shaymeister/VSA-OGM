@@ -23,11 +23,6 @@ class SSPGenerator:
         --------
         None
         """
-
-        # -----------------------------
-        # TODO Add Argument Validation
-        # -----------------------------
-
         self.dimensionality: int = dimensionality
         self.device: str = device
         self.length_scale: float = length_scale
@@ -45,11 +40,6 @@ class SSPGenerator:
         1) ssp_matrix (torch.tensor): a matrix of random hypervectors of
             shape [n, self.dimensionality]
         """
-
-        # -----------------------------
-        # TODO Add Argument Validation
-        # -----------------------------
-
         ssp_matrix = torch.zeros((n, self.dimensionality), device=self.device)
 
         for i in range(n):

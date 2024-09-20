@@ -21,10 +21,6 @@ def bind(vs: Union[torch.tensor, list], device: str) -> torch.tensor:
         shape = (num_vsa_dimensions)
     """
 
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
-
     if isinstance(vs, list):
         ubvm_shape = (len(vs), vs[0].shape[-1])
         ubvm = torch.zeros(ubvm_shape, device=device)
@@ -52,17 +48,11 @@ def invert(ssp: torch.tensor) -> torch.tensor:
     1) ssp (torch.tensor): the pseudo inverse of the argued ssp calculated
         by reversing the indices; shape = (num_vsa_dimensions)
     """
-
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
-
     return ssp[-torch.arange(ssp.shape[0])]
 
 def power(ssp: torch.tensor, scalar: float, length_scale: float = 1.0) -> torch.tensor:
     """
-    Fractionally bind hypervectors to continuous scalars with exponentiation
-    in the Fourier domain
+    Fractionally bind hypervectors to continuous scalars with exponentiation in the Fourier domain
 
     More information can be found here: https://shorturl.at/jloDO
 
@@ -77,10 +67,6 @@ def power(ssp: torch.tensor, scalar: float, length_scale: float = 1.0) -> torch.
     --------
     x (torch.tensor): the argued ssp fractional bound to the target scaler
     """
-
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
 
     x = torch.fft.fft(ssp)
     x = x ** (scalar / length_scale)
@@ -103,10 +89,6 @@ def make_good_unitary(num_dims: int, device: str,
     --------
     1) v (torch.tensor): a one dimensional tensor of unitary phasors
     """
-
-    # -----------------------------
-    # TODO Add Argument Validation
-    # -----------------------------
 
     a = torch.rand((num_dims - 1) // 2)
     sign = np.random.choice((-1, +1), len(a))
