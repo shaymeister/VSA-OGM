@@ -1,0 +1,14 @@
+animals/
+    "dog.png":      "Created by Freepik from flaticon.com"
+    "elephant.png": "Created by Freepik from flaticon.com"
+    "frog.png":     "Created by Freepik from flaticon.com"
+    "hen.png":      "Created by Freepik from flaticon.com"
+    "lion.png":     "Created by Freepik from flaticon.com"
+
+military/
+    "military-truck.png": "Created by iconixar from flaticon.com"
+    "missle-truck.png":   "Created by max.icons from flaticon.com"
+    "robot.png":          "Created by Freepik from flaticon.com"
+    "soldier.png":        "Created by RaftelDesign from flaticon.com"
+    "tank.png":           "Created by photo3idea_studio from flaticon.com"
+    "walle.png":          "Created by Smashicons from flaticon.com"
