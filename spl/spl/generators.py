@@ -45,8 +45,7 @@ class SSPGenerator:
         for i in range(n):
             ssp_matrix[i, :] = make_good_unitary(
                 num_dims=self.dimensionality,
-                device=self.device,
-                length_scale=self.length_scale
+                device=self.device
             )
 
         return ssp_matrix
