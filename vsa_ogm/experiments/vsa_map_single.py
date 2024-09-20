@@ -6,9 +6,9 @@ import pickle as pkl
 import torch
 import yaml
 
-import highfrost.ogm.dataloaders.functional as hogmf
-from highfrost.ogm.metrics import calculate_AUC
-from highfrost.ogm.utilities import train_test_split
+import vsa_ogm.dataloaders.functional as hogmf
+from vsa_ogm.metrics import calculate_AUC
+from vsa_ogm.utilities import train_test_split
 import spl.mapping as spm
 
 torch.cuda.empty_cache()

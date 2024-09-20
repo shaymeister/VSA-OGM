@@ -1,6 +1,6 @@
 from omegaconf import DictConfig
 
-from highfrost.ogm.dataloaders import (
+from vsa_ogm.dataloaders import (
     CSVDataLoader,
     PickleDataLoader,
     ToySimDataLoader,

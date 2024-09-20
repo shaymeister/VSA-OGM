@@ -3,11 +3,11 @@ import os
 import pickle as pkl
 from sklearn import metrics
 
-from highfrost.ogm.plotting import plot_AUC
-from spl.mapping import OGM2D_V3
+from vsa_ogm.plotting import plot_AUC
+from spl.mapping import OGM2D_V4
 
 
-def calculate_AUC(mapper: OGM2D_V3, test_data: dict, log_dir: str,
+def calculate_AUC(mapper: OGM2D_V4, test_data: dict, log_dir: str,
         threshold_range: list[float] = [-1, 1]) -> None:
     """
     Calculate the Area Under the Curve (AUC) for a given mapper and test data.
@@ -22,7 +22,7 @@ def calculate_AUC(mapper: OGM2D_V3, test_data: dict, log_dir: str,
         NotImplementedError: This function is not fully implemented yet.
     """
 
-    assert isinstance(mapper, OGM2D_V3)
+    assert isinstance(mapper, OGM2D_V4)
     assert isinstance(test_data, dict)
     assert "lidar_data" in test_data.keys()
     assert "occupancy" in test_data.keys()
@@ -63,7 +63,7 @@ def calculate_AUC(mapper: OGM2D_V3, test_data: dict, log_dir: str,
         pkl.dump(fpr_list, f)
 
 
-def calculate_y_pred(mapper: OGM2D_V3, test_data: np.ndarray,
+def calculate_y_pred(mapper: OGM2D_V4, test_data: np.ndarray,
         threshold: float) -> list[np.ndarray]:
     """
     Calculate the predicted occupancy values based on a given mapper, testing
@@ -77,7 +77,7 @@ def calculate_y_pred(mapper: OGM2D_V3, test_data: np.ndarray,
     Returns:
         list[np.ndarray]: The predicted occupancy values with the threshold.
     """
-    assert isinstance(mapper, OGM2D_V3)
+    assert isinstance(mapper, OGM2D_V4)
     assert isinstance(test_data, np.ndarray)
     assert isinstance(threshold, float)
 
