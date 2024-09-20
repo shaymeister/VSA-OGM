@@ -453,7 +453,7 @@ def main(config: dict) -> None:
         animals=animals,
         axis_bounds=axis_bounds,
         xy_axis_matrix=xy_axis_matrix,
-        device=device,
+        # device=device,
         save_path=path
     )
 
