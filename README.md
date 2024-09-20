@@ -20,6 +20,18 @@ In this application of bio-inspired vector symbolic architectures, we employ a n
 
 ---
 
+###
+
+The VSA-OGM is wrapped together as a single pip package. You must pre-install pytorch depending on your specific machine and the semantic pointer library (spl). SPL is included in this repo as a second directory. You can locally install the library with the following command:
+
+```bash
+python -m pip install .
+```
+
+It has currently been tested on MacOS and Ubuntu with CPU and CUDA 11.7. Other operating systems and CUDA versions should be supported but it has not been formally tested.
+
+---
+
 ### Datasets
 
 - Toy Sim (Single Agent): included in `datasets`

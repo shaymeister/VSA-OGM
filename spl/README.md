@@ -6,7 +6,7 @@ A Python-based library for developing and applying semantic pointers with CUDA a
 
 ### Installation
 
-The Semantic Pointer Library is wrapped together as a single pip package. You can locally install the library with the following command:
+The Semantic Pointer Library is wrapped together as a single pip package. You must pre-install pytorch depending on your specific machine. You can locally install the library with the following command:
 
 ```bash
 python -m pip install .
