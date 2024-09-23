@@ -1,6 +1,6 @@
 ## VSA-OGM - Occupancy Grid Mapping in 2D
 
-In this application of bio-inspired vector symbolic architectures, we employ a novel hyperdimensional occupancy grid mapping system with Shannon entropy. For the most in-depth exploration of our experiments and results, please take a look at [our paper](.).
+In this application of bio-inspired vector symbolic architectures, we employ a novel hyperdimensional occupancy grid mapping system with Shannon entropy. For the most in-depth exploration of our experiments and results, please take a look at [our paper](https://arxiv.org/pdf/2408.09066).
 
 *This work was supported under grant 5.21 from the University of Michigan's Automotive Research Center (ARC) and the U.S. Army's Ground Vehicle Systems Center (GVSC).* 
 
@@ -65,7 +65,7 @@ If you have any issues, questions, comments, or concerns about Highfrost, please
 
 ### Reference and Citation
 
-If you find our work useful in your research endeavors, we would appreciate if you would consider citing [our paper](.):
+If you find our work useful in your research endeavors, we would appreciate if you would consider citing [our paper](https://arxiv.org/pdf/2408.09066):
 
 ```text
 @misc{snyder2024braininspiredprobabilisticoccupancy,
