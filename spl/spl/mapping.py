@@ -1628,29 +1628,29 @@ class OGM2D_V4:
         if self.verbose:
             print("Plotting quadrant centers and quadrants...")
 
-        qcp_sp: str = os.path.join(
-            self.log_dir,
-            f"quadrant_centers_level_{level}.png"
-        )
-        spp.plot_quadrant_centers(
-            qcs=qcs,
-            world_bounds_norm=self.world_bounds_norm,
-            quadrant_level=level,
-            save_path=qcp_sp
-        )
+        # qcp_sp: str = os.path.join(
+        #     self.log_dir,
+        #     f"quadrant_centers_level_{level}.png"
+        # )
+        # spp.plot_quadrant_centers(
+        #     qcs=qcs,
+        #     world_bounds_norm=self.world_bounds_norm,
+        #     quadrant_level=level,
+        #     save_path=qcp_sp
+        # )
 
-        qp_sp: str = os.path.join(
-            self.log_dir,
-            f"quadrants_level_{level}.png"
-        )
-        spp.plot_quadrants_and_centers(
-            qcs=qcs,
-            qb_x=qb_x,
-            qb_y=qb_y,
-            world_bounds_norm=self.world_bounds_norm,
-            quadrant_level=level,
-            save_path=qp_sp
-        )
+        # qp_sp: str = os.path.join(
+        #     self.log_dir,
+        #     f"quadrants_level_{level}.png"
+        # )
+        # spp.plot_quadrants_and_centers(
+        #     qcs=qcs,
+        #     qb_x=qb_x,
+        #     qb_y=qb_y,
+        #     world_bounds_norm=self.world_bounds_norm,
+        #     quadrant_level=level,
+        #     save_path=qp_sp
+        # )
 
         if self.verbose:
             print("Finished plotting quadrant centers and quadrants.")

@@ -126,6 +126,8 @@ def plot_quadrant_boundaries(
 
 def plot_quadrant_centers(
         qcs: torch.tensor,
+        qb_x: torch.Tensor,
+        qb_y: torch.Tensor,
         world_bounds_norm: torch.tensor,
         clear_figure: bool = True,
         quadrant_level: int = -1,
@@ -158,6 +160,10 @@ def plot_quadrant_centers(
     Returns:
         None
     """
+
+    # -----------------------------
+    # TODO Add Argument Validation
+    # -----------------------------
 
     if isinstance(qcs, torch.Tensor):
         qcs = qcs.detach().cpu().numpy()
@@ -206,7 +212,7 @@ def plot_quadrant_centers(
         plt.savefig(save_path, dpi=300)
 
     if show_plot:
-        plt.show()                           
+        plt.show()                          
                    
 
 def plot_2d_heatmap_queried(plane_matrix: torch.tensor,

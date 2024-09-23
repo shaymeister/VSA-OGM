@@ -24,11 +24,11 @@ BASE_CONFIG: dict = {
         "decision_thresholds": [-0.99, 0.99],
         "device": "cpu" if torch.cuda.is_available() else "cpu",
         "length_scale": 2.0,
-        "quadrant_hierarchy": [2],
+        "quadrant_hierarchy": [4],
         "use_query_normalization": True,
         "use_query_rescaling": False,
         "verbose": True,
-        "vsa_dimensions": 32000,
+        "vsa_dimensions": 16000,
         "plotting": {
             "plot_xy_voxels": False
         }
@@ -37,7 +37,7 @@ BASE_CONFIG: dict = {
         "dataset_name": "toysim", # toysim, intel
         "test_split": 0.1,
         "toysim": {
-            "data_dir": os.path.expanduser("~") + "/dev/highfrost/highfrost/ogm/datasets/single/toysim0/npz",
+            "data_dir": os.path.expanduser("~") + "/dev/VSA-OGM/datasets/single/toysim0/npz",
             "file_prefix": "results_frame_",
             "file_suffix": ".npz",
             "world_bounds": [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
@@ -48,7 +48,7 @@ BASE_CONFIG: dict = {
         },
     },
     "logging": {
-        "log_dir": os.path.expanduser("~") + "/dev/highfrost/highfrost/ogm/experiments/logs",
+        "log_dir": os.path.expanduser("~") + "/dev/VSA-OGM/vsa_ogm/experiments/logs",
         "occupied_map_dir": "occupied_maps",
         "empty_map_dir": "empty_maps",
         "global_maps_dir": "global_maps",
@@ -125,11 +125,11 @@ def main(config: dict) -> None:
     with open(test_data_path, "wb") as f:
         pkl.dump(test_data, f)
 
-    calculate_AUC(
-        mapper=mapper,
-        test_data=test_data,
-        log_dir=log_path
-    )
+    # calculate_AUC(
+    #     mapper=mapper,
+    #     test_data=test_data,
+    #     log_dir=log_path
+    # )
 
 
     
