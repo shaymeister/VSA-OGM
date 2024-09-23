@@ -127,11 +127,11 @@ def main(config: dict) -> None:
     with open(test_data_path, "wb") as f:
         pkl.dump(test_data, f)
 
-    calculate_AUC(
-        mapper=mapper,
-        test_data=test_data,
-        log_dir=log_path
-    )
+    # calculate_AUC(
+    #     mapper=mapper,
+    #     test_data=test_data,
+    #     log_dir=log_path
+    # )
 
 
     
