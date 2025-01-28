@@ -20,7 +20,9 @@ setup(
         "pyyaml",
         "scikit-learn",
         "scikit-image",
-        "tqdm"
+        "tabulate",
+        "tqdm",
+        "wandb",
     ],
     author="Shay Snyder",
     author_email="ssnyde9@gmu.edu",
