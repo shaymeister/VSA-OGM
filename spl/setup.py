@@ -7,7 +7,7 @@ if __name__ == "__main__":
         install_requires=[
             "ipykernel",
             "matplotlib",
-            "numpy==1.26.0",
+            "numpy",
             "omegaconf",
             "scikit-learn",
             "tqdm",
