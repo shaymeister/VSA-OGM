@@ -1,0 +1,4 @@
+experiment_name: "baseline_mapping_tester"
+wandb_enabled: False
+wandb_notes: "<TODO - Add notes here>"
+wandb_project: "baseline_mapping_tester"
