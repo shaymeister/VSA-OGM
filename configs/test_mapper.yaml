@@ -1,4 +1,12 @@
 experiment_name: "baseline_mapping_tester"
-wandb_enabled: False
-wandb_notes: "<TODO - Add notes here>"
-wandb_project: "baseline_mapping_tester"
+logging:
+  enabled: True
+  override_existing: False
+  save_dir: "logs"
+  verbose: False
+wandb:
+  enabled: False
+  notes: "<TODO - Add notes here>"
+  online: True
+  project_name: "baseline_mapping_tester"
+  verbose: False
