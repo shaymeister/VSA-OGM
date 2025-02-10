@@ -5,7 +5,9 @@ from omegaconf import DictConfig, OmegaConf
 import sys
 from tabulate import tabulate
 
+from vsa_ogm.data import load_data
 from vsa_ogm.logging import OGMLogger, WANBDLogger
+
 
 def parse_args() -> Tuple[argparse.Namespace, List[str]]:
     """
@@ -99,6 +101,9 @@ def main(config: omegaconf.DictConfig) -> None:
     online_logger = WANBDLogger(config)
     loggers = [local_logger, online_logger]
     [logger.log_config(config) for logger in loggers]
+
+    # Load the data
+
 
     pass
 
