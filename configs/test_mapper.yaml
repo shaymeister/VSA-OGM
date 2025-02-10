@@ -3,6 +3,9 @@ experiment_type: "single_agent"
 data:
   dataset_name: "toysim"
   data_dir: "datasets/sa/toysim/npz"
+  file_prefix: "results_frame_"
+  file_suffix: ".npz"
+  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
 logging:
   enabled: True
   override_existing: False

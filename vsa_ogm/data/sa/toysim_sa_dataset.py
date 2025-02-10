@@ -23,9 +23,9 @@ class ToySimSingleAgentDataset(BaseSingleAgentDataset):
         """
         super(ToySimSingleAgentDataset, self).__init__(config, loggers)
 
-        file_path: str = config.data_dir
-        prefix: str = config.file_prefix
-        suffix: str = config.file_suffix
+        file_path: str = config.data.data_dir
+        prefix: str = config.data.file_prefix
+        suffix: str = config.data.file_suffix
 
         mask: str = prefix + "*" + suffix
         file_path_mask: str = os.path.join(file_path, mask)
@@ -35,7 +35,7 @@ class ToySimSingleAgentDataset(BaseSingleAgentDataset):
         files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
         self.files: list[str] = files
-        self.map_size: list[int] = config.world_bounds
+        self.map_size: list[int] = config.data.world_bounds
         self.step_limit: int = len(self.files) - 1
         self.time_step: int = -1
 
@@ -69,8 +69,6 @@ class ToySimSingleAgentDataset(BaseSingleAgentDataset):
 
         occupancy = np.zeros((laser_data.shape[0],))
         occupancy[np.where(distance_data != max_laser_distance)] = 1.0
-
-
 
         data_batch: dict = {
             "lidar_data": torch.from_numpy(laser_data),
