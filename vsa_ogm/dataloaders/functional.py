@@ -4,8 +4,7 @@ from vsa_ogm.dataloaders import (
     CSVDataLoader,
     PickleDataLoader,
     ToySimDataLoader,
-)
-
+) 
 
 def load_single_data(config: DictConfig) -> tuple:
     """
