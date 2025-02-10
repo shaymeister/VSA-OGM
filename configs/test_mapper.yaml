@@ -1,4 +1,7 @@
 experiment_name: "baseline_mapping_tester"
+experiment_type: "single_agent"
+data:
+  dataset: "ToySim"
 logging:
   enabled: True
   override_existing: False
