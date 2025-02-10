@@ -6,8 +6,8 @@ import sys
 from tabulate import tabulate
 
 from vsa_ogm.data import load_data
+from vsa_ogm.data.sa import BaseSingleAgentDataset
 from vsa_ogm.logging import OGMLogger, WANBDLogger
-
 
 def parse_args() -> Tuple[argparse.Namespace, List[str]]:
     """
@@ -103,7 +103,7 @@ def main(config: omegaconf.DictConfig) -> None:
     [logger.log_config(config) for logger in loggers]
 
     # Load the data
-
+    dataset: BaseSingleAgentDataset = load_data(config, loggers)
 
     pass
 

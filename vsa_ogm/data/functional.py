@@ -21,19 +21,20 @@ def load_data(config: DictConfig, loggers: List[BaseLogger]):
         ValueError: If the dataset name is unknown.
     """
 
-    dataset_name = config.dataset.name
+    dataset_name = config.data.dataset_name
+    exp_type: str = config.experiment_type
 
     if dataset_name not in VALID_DATASETS:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
+        raise ValueError(f"Unknown dataset - {dataset_name} - must be in [{VALID_DATASETS}]")
     
-    if config.experiment_type not in VALID_EXPERIMENT_TYPES:
-        raise ValueError(f"Unknown experiment type: {config.experiment_type}")
+    if exp_type not in VALID_EXPERIMENT_TYPES:
+        raise ValueError(f"Unknown experiment type -  {exp_type} - must be in [{VALID_EXPERIMENT_TYPES}]")
     
-    if config.experiment_type == "multi-agent":
+    if exp_type == "multi-agent":
         raise NotImplementedError("Multi-agent experiments are not yet supported.")
     
-    if dataset_name == "toysim" and config.experiment_type == "single_agent":
-        from vsa_ogm.data.single_agent.toysim_single_agent_dataset import ToySimSingleAgentDataset
+    if dataset_name == "toysim" and exp_type == "single_agent":
+        from vsa_ogm.data.sa.toysim_sa_dataset import ToySimSingleAgentDataset
         dataset = ToySimSingleAgentDataset(config, loggers)
 
     return dataset
