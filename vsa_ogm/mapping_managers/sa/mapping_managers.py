@@ -3,6 +3,7 @@ from typing import List
 
 from vsa_ogm.data.sa import BaseSingleAgentDataset
 from vsa_ogm.logging import BaseLogger
+from vsa_ogm.mappers.sa import BaseSingleAgentMapper
 
 VALID_METRICS: List[str] = ["auc", "f1", "precision", "recall", "accuracy", "nll"]
 
@@ -33,6 +34,8 @@ class SingleAgentMappingManager:
                 raise ValueError(f"Invalid metric: {metric}. Valid metrics are: {VALID_METRICS}")
             
         self.plotting_flags: DictConfig = config.mapping_manager.plotting_flags
+        self.mapper: BaseSingleAgentMapper = None
+        self._initialize_mapper()
 
     def run(self, dataset: BaseSingleAgentDataset) -> None:
         """
@@ -45,8 +48,34 @@ class SingleAgentMappingManager:
 
         dataset_length: int = len(dataset)
 
+        # log the start of the mapping manager
         string = f"{self.print_header} Running Mapping Manager on dataset with {dataset_length} steps."
         if self.verbose:
             print(string)
         for logger in self.loggers:
             logger.log_string(string)
+
+        # iterate through the dataset
+        for idx in range(dataset_length):
+            # log the current step
+            string = f"{self.print_header} Processing dataset step {idx}."
+            if self.verbose:
+                print(string)
+            for logger in self.loggers:
+                logger.log_string(string)
+
+            # get the data at the current index
+            data_batch: dict = dataset[idx]
+
+    def _initialize_mapper(self) -> None:
+        """
+        Initialize the mapper based on the configuration.
+        """
+        mapper_type: str = self.config.mapping.mapping_type
+        if mapper_type == "SA_VSA_OGM":
+            from vsa_ogm.mappers.sa.sa_vsa_mapper import SA_VSA_OGM
+            self.mapper = SA_VSA_OGM(self.config, self.loggers)
+        else:
+            raise ValueError(f"Invalid mapper type: {mapper_type}.")
+
+
