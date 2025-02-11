@@ -5,6 +5,7 @@ data:
   data_dir: "datasets/sa/toysim0/npz"
   file_prefix: "results_frame_"
   file_suffix: ".npz"
+  test_split: 0.2
   world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
 logging:
   enabled: True
@@ -27,6 +28,7 @@ mapping_manager:
   plotting_flags: 
     plot_metrics: True
     plot_points_clouds: True
+  seed: 42
   verbose: True
 wandb:
   enabled: False
