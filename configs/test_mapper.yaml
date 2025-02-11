@@ -2,7 +2,7 @@ experiment_name: "baseline_mapping_tester"
 experiment_type: "single_agent"
 data:
   dataset_name: "toysim"
-  data_dir: "datasets/sa/toysim/npz"
+  data_dir: "datasets/sa/toysim0/npz"
   file_prefix: "results_frame_"
   file_suffix: ".npz"
   world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
@@ -11,6 +11,19 @@ logging:
   override_existing: False
   save_dir: "logs"
   verbose: False
+mapping:
+  data_filter: "passthrough"
+  data_filter_args: {}
+  length_scale: 1.0
+  num_tiles: 1
+  vector_dimensionality: 256
+mapping_manager:
+  metrics: ["auc", "f1", "precision", "recall", "accuracy", "nll"]
+  num_mappers: 1
+  plotting_flags: 
+    plot_metrics: True
+    plot_points_clouds: True
+  verbose: True
 wandb:
   enabled: False
   notes: "<TODO - Add notes here>"
