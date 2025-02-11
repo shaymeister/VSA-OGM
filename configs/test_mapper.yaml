@@ -12,11 +12,15 @@ logging:
   save_dir: "logs"
   verbose: False
 mapping:
+  axis_resolution: 0.5
   data_filter: "passthrough"
   data_filter_args: {}
-  length_scale: 1.0
+  device: "cpu"
+  mapping_type: "SA_VSA_OGM"
   num_tiles: 1
+  seed: 42
   vector_dimensionality: 256
+  vector_length_scale: 1.0
 mapping_manager:
   metrics: ["auc", "f1", "precision", "recall", "accuracy", "nll"]
   num_mappers: 1
