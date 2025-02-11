@@ -8,6 +8,8 @@ from tabulate import tabulate
 from vsa_ogm.data import load_data
 from vsa_ogm.data.sa import BaseSingleAgentDataset
 from vsa_ogm.logging import OGMLogger, WANBDLogger
+from vsa_ogm.mapping_managers import SingleAgentMappingManager
+
 
 def parse_args() -> Tuple[argparse.Namespace, List[str]]:
     """
@@ -21,6 +23,7 @@ def parse_args() -> Tuple[argparse.Namespace, List[str]]:
     parser.add_argument("--config", type=str, required=True, help="Path to the input config file")
     args, unknown_args = parser.parse_known_args()
     return args, unknown_args
+
 
 def validate_overrides(loaded_config: DictConfig, argued_config: DictConfig) -> DictConfig:
     """
@@ -89,6 +92,7 @@ def print_introduction(config: omegaconf.DictConfig, kwargs: Dict[str, Any], del
     print()
     print(delimiter * delimiter_width)
 
+
 def main(config: omegaconf.DictConfig) -> None:
     """
     Main function to execute the script.
@@ -96,7 +100,7 @@ def main(config: omegaconf.DictConfig) -> None:
     Args:
         config (omegaconf.DictConfig): Merged configuration.
     """
-
+    # Initialize the loggers
     local_logger = OGMLogger(config)
     online_logger = WANBDLogger(config)
     loggers = [local_logger, online_logger]
@@ -105,7 +109,15 @@ def main(config: omegaconf.DictConfig) -> None:
     # Load the data
     dataset: BaseSingleAgentDataset = load_data(config, loggers)
 
-    pass
+    # create the mapping manager
+    mapping_manager = SingleAgentMappingManager(config, loggers)
+
+    # run the mapping manager
+    mapping_manager.run(dataset)
+
+    # close the loggers
+    [logger.close() for logger in loggers]
+
 
 if __name__ == "__main__":
     args, unknown_args = parse_args()
