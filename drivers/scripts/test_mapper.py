@@ -8,7 +8,7 @@ from tabulate import tabulate
 from vsa_ogm.data import load_data
 from vsa_ogm.data.sa import BaseSingleAgentDataset
 from vsa_ogm.logging import OGMLogger, WANBDLogger
-from vsa_ogm.mapping_managers import SingleAgentMappingManager
+from vsa_ogm.mapping_managers.sa import SingleAgentMappingManager
 
 
 def parse_args() -> Tuple[argparse.Namespace, List[str]]:
