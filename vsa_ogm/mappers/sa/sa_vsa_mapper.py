@@ -1,4 +1,6 @@
+import numpy as np
 from omegaconf import DictConfig
+import torch
 import torch.nn as nn
 from typing import List
 
@@ -53,4 +55,48 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             self.world_bounds[3] - self.world_bounds[2]
         ]
 
+    def fit(self, X: List[np.ndarray], y: List[np.ndarray]) -> None:
+        """
+        Fit the VSA_OGM model to the given data.
+
+        Args:
+            X (List[np.ndarray]): The input data to fit the model to.
+            y (List[np.ndarray]): The target data to fit the model to.
+
+        Returns:
+            None
+        """
+        fit_metrics: dict = {}
+
+        if len(X) != len(y):
+            raise ValueError("The number of input and target data must match.")
+        
+        if isinstance(X, np.ndarray):
+            X = torch.tensor(X)
+            y = torch.tensor(y)
+        
+        X = X.to(self.device)
+        y = y.to(self.device)
+
+        return fit_metrics
+    
+    def predict(self, X: List[np.ndarray]) -> List[np.ndarray]:
+        """
+        Predict the output from the input data.
+
+        Args:
+            X (List[np.ndarray]): The input data to predict the output from.
+
+        Returns:
+            List[np.ndarray]: The predicted output data.
+        """
+        predictions: List[np.ndarray] = []
+        prediction_metrics: dict = {}
+
+        if isinstance(X, np.ndarray):
+            X = torch.tensor(X)
+        
+        X = X.to(self.device)
+
+        return predictions, prediction_metrics
 
