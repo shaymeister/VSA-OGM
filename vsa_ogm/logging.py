@@ -19,6 +19,18 @@ class BaseLogger:
         TODO Finish Documentation
         """
         raise NotImplementedError("log_config is not implemented in BaseLogger.")
+    
+    def log_string(self, string: str) -> None:
+        """
+        TODO Finish Documentation
+        """
+        raise NotImplementedError("log_string is not implemented in BaseLogger.")
+    
+    def close(self) -> None:
+        """
+        TODO Finish Documentation
+        """
+        raise NotImplementedError("close is not implemented in BaseLogger.")
 
 class WANBDLogger(BaseLogger):
     """
@@ -42,6 +54,18 @@ class WANBDLogger(BaseLogger):
         """
         print(f"{self.print_header} (TODO) Logging Configuration")
 
+    def log_string(self, string: str) -> None:
+        """
+        This methods is simply a pass-through for the print function because
+        WandB will log all print statements automatically.
+        """
+        return
+    
+    def close(self) -> None:
+        """
+        Close the WandB session.
+        """
+        pass
 
 class OGMLogger(BaseLogger):
     """
@@ -74,16 +98,35 @@ class OGMLogger(BaseLogger):
         
         os.makedirs(self.experiment_dir)
 
+        std_out_fp: str = os.path.join(self.experiment_dir, "stdout.txt")
+        self.std_out_file = open(std_out_fp, "w")
+
     def log_config(self, config: DictConfig) -> None:
         """
-        TODO Finish Documentation
+        Save the configuration to a file.
+
+        Arguments:
+        ----------
+        config : DictConfig
+            The configuration to save.
         """
         OmegaConf.save(config, os.path.join(self.experiment_dir, self.config_fname))
 
-    
+    def log_string(self, string: str) -> None:
+        """
+        Write a string to the stdout file and print it to the console.
 
+        Arguments:
+        ----------
+        string : str
+            The string to write to the file.
+        """
+        self.std_out_file.write(string + "\n")
+        if self.verbose:
+            print(f"{self.print_header} wrote string to file")
 
-
-
-
-    
+    def close(self) -> None:
+        """
+        close all file handlers
+        """
+        self.std_out_file.close()
