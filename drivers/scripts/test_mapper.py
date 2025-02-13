@@ -5,6 +5,7 @@ from omegaconf import DictConfig, OmegaConf
 import sys
 from tabulate import tabulate
 
+
 from vsa_ogm.data import load_data
 from vsa_ogm.data.sa import BaseSingleAgentDataset
 from vsa_ogm.logging import OGMLogger, WANBDLogger
