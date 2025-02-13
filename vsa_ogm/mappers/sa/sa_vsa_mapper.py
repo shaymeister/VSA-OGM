@@ -2,11 +2,107 @@ import numpy as np
 from omegaconf import DictConfig
 import torch
 import torch.nn as nn
-from typing import List
+from typing import List, Tuple, Union
 
 from .base_sa_mapper import BaseSingleAgentMapper
 from ...logging import BaseLogger
 
+
+def make_good_unitary(num_dims: int, device: str,
+        eps: float = 1e-3) -> torch.tensor:
+    """
+    create a hyperdimensional vector of unitary length phasers to build the
+    quasi-orthogonal algebraic space
+
+    Arguments:
+    ----------
+    1) num_dims (int): the dimensionality of the vsa
+    2) device (str): where to store the tensor
+    3) eps (float): the allowable variability in the phase of each phasor
+
+    Returns:
+    --------
+    1) v (torch.tensor): a one dimensional tensor of unitary phasors
+    """
+
+    a = torch.rand((num_dims - 1) // 2)
+    sign = np.random.choice((-1, +1), len(a))
+    
+    sign = torch.from_numpy(sign).to(device)
+    a = a.to(device)
+
+    phi = sign * torch.pi * (eps + a * (1 - 2 * eps))
+
+    assert torch.all(torch.abs(phi) >= torch.pi * eps)
+    assert torch.all(torch.abs(phi) <= torch.pi * (1 - eps))
+
+    fv = torch.zeros(num_dims, dtype=torch.complex64, device=device)
+    fv[0] = 1
+    fv[1:(num_dims + 1) // 2] = torch.cos(phi) + 1j * torch.sin(phi)
+    fv[(num_dims // 2) + 1:] = torch.flip(torch.conj(fv[1:(num_dims + 1) // 2]), dims=[0])
+    
+    if num_dims % 2 == 0:
+        fv[num_dims // 2] = 1
+
+    assert torch.allclose(torch.abs(fv), torch.ones(fv.shape, device=device))
+    
+    v = torch.fft.ifft(fv)
+    v = v.real
+    v = v.to(device)
+    
+    assert torch.allclose(torch.fft.fft(v), fv)
+    assert torch.allclose(torch.linalg.norm(v), torch.ones(v.shape, device=device))
+
+    return v
+
+
+class SSPGenerator:
+    """
+    A Utility class to generate arbitrary numbers of hyper-vectors with the
+    same shape so they can be binded and bundled together
+    """
+    def __init__(self, dimensionality: int, device: str, length_scale: float = 1) -> None:
+        """
+        Init SSP Generator
+
+        Arguments:
+        ----------
+        1) dimensionality (int): the number of dimensions contained within
+            each hypervector
+        2) device (str): a string representing the device to load, store,
+            and operate
+        3) length_scale (float): adjust the width of the kernel
+
+        Returns:
+        --------
+        None
+        """
+        self.dimensionality: int = dimensionality
+        self.device: str = device
+        self.length_scale: float = length_scale
+
+    def generate(self, n: int) -> torch.tensor:
+        """
+        Randomly create a series of n hypervectors
+
+        Arguments:
+        ----------
+        1) n (int): the number of vectors to generate
+
+        Returns:
+        --------
+        1) ssp_matrix (torch.tensor): a matrix of random hypervectors of
+            shape [n, self.dimensionality]
+        """
+        ssp_matrix = torch.zeros((n, self.dimensionality), device=self.device)
+
+        for i in range(n):
+            ssp_matrix[i, :] = make_good_unitary(
+                num_dims=self.dimensionality,
+                device=self.device
+            )
+
+        return ssp_matrix
 
 
 class SA_VSA_OGM(BaseSingleAgentMapper):
@@ -16,6 +112,21 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
     # class variables and objects
     num_observations: int = 0
     pairwaise_distance = nn.PairwiseDistance()
+
+    # ----------------------------------
+    # empty variables for class methods
+    # ----------------------------------
+    quadrant_axis_bounds: Tuple[Tuple[torch.tensor, torch.tensor]] = []
+    quadrant_centers: Tuple[torch.tensor] = []
+    occupied_quadrant_memory_vectors: torch.tensor = None
+    empty_quadrant_memory_vectors: torch.tensor = None
+    xy_axis_linspace: tuple[torch.tensor] = []
+    xy_axis_vectors: torch.tensor = None
+    xy_axis_matrix: torch.tensor = None
+    xy_axis_global_heatmap: torch.tensor = None
+    xy_axis_occupied_heatmap: torch.tensor = None
+    xy_axis_empty_heatmap: torch.tensor = None
+    xy_axis_class_matrix: torch.tensor = None
 
 
     def __init__(self, config: DictConfig, loggers: List[BaseLogger],
@@ -44,6 +155,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self.vector_dimensionality: int = config.mapping.vector_dimensionality
         self.vector_length_scale: float = config.mapping.vector_length_scale
         self.world_bounds: List[int] = config.data.world_bounds
+        self.verbose: bool = config.mapping.verbose
 
         # -----------------------------------------------
         # initialize class variables based on the config
@@ -54,6 +166,34 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             self.world_bounds[1] - self.world_bounds[0],
             self.world_bounds[3] - self.world_bounds[2]
         ]
+
+        self.environment_dimensionality: int = 2
+        self.boolean_results_mask = None
+
+        # --------------------------
+        # Dependency Initialization
+        # --------------------------
+        self.pdist = torch.nn.PairwiseDistance()
+
+        self.ssp_generator = SSPGenerator(
+            dimensionality=self.vsa_dimensions,
+            device=self.device,
+            length_scale=self.length_scale
+        )
+
+        self._build_quadrant_hierarchy()
+        self._build_quadrant_memory_hierarchy()
+        self._build_quadrant_indices()
+        self._build_xy_axis_linspace()
+        self._build_xy_axis_vectors()
+
+        # Memory Caching for Repeated Operations
+        self.x_axis_fd = torch.fft.fft(self.xy_axis_vectors[0])
+        self.y_axis_fd = torch.fft.fft(self.xy_axis_vectors[1])
+
+        self._build_xy_axis_matrix()
+        self._build_xy_axis_heatmaps()
+        self._build_xy_axis_class_matrices()
 
     def fit(self, X: List[np.ndarray], y: List[np.ndarray]) -> None:
         """
@@ -99,4 +239,748 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         X = X.to(self.device)
 
         return predictions, prediction_metrics
+    
+    def process_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
+            labels: Union[np.ndarray, torch.tensor], occupied: bool = True) -> None:
+        """
+        Processes an observation represented as a point cloud and the
+        corresponding labels for each point.
+
+        Args:
+            point_cloud (Union[np.ndarray, torch.tensor]): A 2D tensor of points
+            labels (Union[np.ndarray, torch.tensor]): A 1D tensor of labels
+
+        Returns:
+            None
+        """
+
+        encoding_time = time.time()
+
+        point_cloud[:, 0] -= self.world_bounds[0]
+        point_cloud[:, 1] -= self.world_bounds[2]
+
+        ups = point_cloud
+
+        
+        # -----------------------------------------------
+        # Calculate quadrant memories for each new point
+        # using a multipoint L2 distance calculation
+        # -----------------------------------------------
+        # dist_time = time.time()
+        ups: torch.tensor = ups.unsqueeze(1)
+        qcm: torch.tensor = self.quadrant_centers[0]
+        qcm: torch.tensor = qcm.unsqueeze(0)
+        qcm: torch.tensor = qcm.repeat(ups.shape[0], 1, 1)
+        dists: torch.tensor = self.pdist(ups, qcm)
+        closest_quads: torch.tensor = torch.argmin(dists, dim=1)
+        # if self.verbose:
+        #     print(f"Distance Time: {time.time() - dist_time}")
+
+        # assert len(ups.shape) == 3
+        # assert len(qcm.shape) == 3
+        # assert ups.shape[0] == qcm.shape[0]
+        # assert ups.shape[0] == ups_labels.shape[0]
+        # assert ups.shape[1] == 1
+        # assert ups.shape[2] == self.environment_dimensionality
+        # assert qcm.shape[1] == self.quadrant_hierarchy[0] ** self.environment_dimensionality
+        # assert qcm.shape[2] == self.environment_dimensionality
+
+        ups = ups.squeeze(1)
+    
+        # ---------------------------
+        # Matrix Encoding Approach
+        # ---------------------------
+        # unsqueeze_time = time.time()
+
+        x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
+        y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
+
+        # if self.verbose:
+        #     print("Unsqueeze Time: ", time.time() - unsqueeze_time)
+
+        # power_time = time.time()
+
+        x_powers = (ups[:, 0] / self.length_scale)
+        y_powers = (ups[:, 1] / self.length_scale)
+
+        # if self.verbose:
+        #     print("Power Time: ", time.time() - power_time)
+
+        # repreat_time = time.time()
+
+        x_power_matrix = x_powers.repeat(self.vsa_dimensions, 1).T
+        y_power_matrix = y_powers.repeat(self.vsa_dimensions, 1).T
+
+        # if self.verbose:
+        #     print("Repeat Time: ", time.time() - repreat_time)
+
+        # exponent_time = time.time()
+
+        x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
+        y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
+
+        # if self.verbose:
+        #     print("Exponent Time: ", time.time() - exponent_time)
+
+        # unsqueeze_time = time.time()
+
+        x_axis_fd_matrix = x_axis_fd_matrix.unsqueeze(0)
+        y_axis_fd_matrix = y_axis_fd_matrix.unsqueeze(0)
+        
+        # if self.verbose:
+        #     print("Unsqueeze Time: ", time.time() - unsqueeze_time)
+
+        # concat_time = time.time()
+
+        xy_axis_fd_matrix = torch.concatenate((x_axis_fd_matrix, y_axis_fd_matrix), dim=0)
+
+        # if self.verbose:
+        #     print("Concat Time: ", time.time() - concat_time)
+
+        # prod_time = time.time()
+
+        xy_axis_fd_matrix = torch.prod(xy_axis_fd_matrix, dim=0)
+
+        # if self.verbose:
+        #     print("Prod Time: ", time.time() - prod_time)
+
+        # ifft_time = time.time()
+
+        xy_axis_fd_matrix = torch.fft.ifft(xy_axis_fd_matrix, dim=1)
+
+        # if self.verbose:
+        #     print("IFFT Time: ", time.time() - ifft_time)
+
+        # real_time = time.time()
+
+        xy_axis_fd_matrix = xy_axis_fd_matrix.real
+
+        # if self.verbose:
+        #     print("Real Time: ", time.time() - real_time)
+
+        # # Version 2 with index based approach
+        # total_time = time.time()
+
+        
+
+        if occupied:
+            self.occupied_quadrant_memory_vectors.index_add_(
+                0,
+                closest_quads,
+                xy_axis_fd_matrix.float()
+            )
+            # self.occupied_quadrant_memory_vectors / torch.norm(self.occupied_quadrant_memory_vectors, dim=0)
+        else:
+            self.empty_quadrant_memory_vectors.index_add_(
+                0,
+                closest_quads,
+                xy_axis_fd_matrix.float()
+            )
+
+        print(f"Encoding Time: {time.time() - encoding_time}")
+
+        # query_time = time.time()
+
+        start_time_decoding = time.time()
+        decoding_time_total = 0.0
+
+        # counter_matrix = torch.range(0, self.occupied_quadrant_memory_vectors.shape[0], device=self.device)
+        # counter_matrix = (counter_matrix.unsqueeze(1) == closest_quads).any(dim=1)
+            
+
+        
+        start_time = time.time()
+        if occupied:
+            norm_qv = self.occupied_quadrant_memory_vectors / torch.norm(
+                self.occupied_quadrant_memory_vectors, dim=1, keepdim=True
+            )
+        else:
+            norm_qv = self.empty_quadrant_memory_vectors / torch.norm(
+                self.empty_quadrant_memory_vectors, dim=1, keepdim=True
+            )
+
+        if occupied:
+            temp_xy_axis_heatmap = torch.clone(self.xy_axis_occupied_heatmap)
+        else:
+            temp_xy_axis_heatmap = torch.clone(self.xy_axis_empty_heatmap)
+
+        result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+
+        if self.boolean_results_mask is None:
+            self.boolean_results_mask = torch.zeros_like(result).bool()
+            counter = 0
+            for j, y_lower in enumerate(self.quadrant_indices_y[:-1]):
+                    for i, x_lower in enumerate(self.quadrant_indices_x[:-1]):
+
+                        
+
+                        # if counter in closest_quads:
+                        x_upper = self.quadrant_indices_x[i + 1]
+                        y_upper = self.quadrant_indices_y[j + 1]
+
+                        self.boolean_results_mask[counter, x_lower:x_upper, y_lower:y_upper] = True
+
+                        start_time = time.time()
+
+                        # temp_xy_axis_heatmap[x_lower:x_upper, y_lower:y_upper] = \
+                        #     result[counter, x_lower:x_upper, y_lower:y_upper]
+                        
+                        counter += 1
+
+        result[~self.boolean_results_mask] = 0
+        temp_xy_axis_heatmap = result.sum(dim=0)
+
+        temp_xy_axis_heatmap = torch.nan_to_num(temp_xy_axis_heatmap)
+        if occupied:
+            self.xy_axis_occupied_heatmap = temp_xy_axis_heatmap
+        else:
+            self.xy_axis_empty_heatmap = temp_xy_axis_heatmap    
+        self.xy_axis_occupied_heatmap = torch.nan_to_num(self.xy_axis_occupied_heatmap)
+
+        self.obs_count += 1
+
+    def query_point_thetas(self, points: Union[np.ndarray, torch.tensor],
+                return_as_numpy: bool = True) -> torch.tensor:
+        """
+        Queries the memory for the given point and returns the theta value.
+
+        Args:
+            - points: A numpy array or torch tensor representing the points to
+                query.
+            - return_as_numpy: A boolean indicating whether to return the
+                results as a numpy array (default: True).
+
+        Returns:
+            - results: A torch tensor or numpy array containing the theta
+                values for the queried points.
+        """
+        # assert isinstance(points, np.ndarray) or isinstance(points, torch.Tensor)
+        # assert len(points.shape) == 2
+        # assert points.shape[1] == self.environment_dimensionality
+        # assert isinstance(return_as_numpy, bool)
+
+        if isinstance(points, np.ndarray):
+            points = torch.from_numpy(points)
+        
+        if points.device != self.device:
+            points = points.to(self.device)
+
+        # assert torch.min(points[:, 0]) >= self.world_bounds[0]
+        # assert torch.max(points[:, 0]) <= self.world_bounds[1]
+        # assert torch.min(points[:, 1]) >= self.world_bounds[2]
+        # assert torch.max(points[:, 1]) <= self.world_bounds[3]
+
+        points[:, 0] -= self.world_bounds[0]
+        points[:, 1] -= self.world_bounds[2]
+        points = points / self.axis_resolution
+        points = torch.round(points)
+        points = points.long()
+        
+        results: torch.tensor = self.xy_axis_global_heatmap[points[:, 0], points[:, 1]]
+
+        # assert len(results.shape) == 1
+        # assert results.shape[0] == points.shape[0]
+
+        if return_as_numpy:
+            results = results.detach().cpu().numpy()
+        
+        return results
+            
+    def query_point_classes(self, points: Union[np.ndarray, torch.tensor],
+                return_as_numpy: bool = True) -> torch.tensor:
+        """
+        Queries the memory for the given point and returns the class.
+
+        Args:
+            point (torch.tensor): The point to query.
+
+        Returns:
+            torch.tensor: The class for the given point.
+        """
+        # assert isinstance(points, np.ndarray) or isinstance(points, torch.Tensor)
+        # assert len(points.shape) == 2
+        # assert points.shape[1] == self.environment_dimensionality
+        # assert isinstance(return_as_numpy, bool)
+
+        if isinstance(points, np.ndarray):
+            points = torch.from_numpy(points)
+        
+        if points.device != self.device:
+            points = points.to(self.device)
+
+        # assert torch.min(points[:, 0]) >= self.world_bounds[0]
+        # assert torch.max(points[:, 0]) <= self.world_bounds[1]
+        # assert torch.min(points[:, 1]) >= self.world_bounds[2]
+        # assert torch.max(points[:, 1]) <= self.world_bounds[3]
+
+        points[:, 0] -= self.world_bounds[0]
+        points[:, 1] -= self.world_bounds[2]
+        points = points / self.axis_resolution
+        points = torch.round(points)
+        points = points.long()
+        
+        results: torch.tensor = self.xy_axis_class_matrix[points[:, 0], points[:, 1]]
+
+        # assert len(results.shape) == 1
+        # assert results.shape[0] == points.shape[0]
+
+        if return_as_numpy:
+            results = results.detach().cpu().numpy()
+        
+        return results
+    
+    def _build_xy_axis_class_matrices(self) -> None:
+        """
+        Builds the XY axis class matrices.
+
+        This method asserts that the `xy_axis_matrix` attribute is not None, is
+        of type `torch.tensor`, and has a shape with three dimensions. It then
+        initializes the `xy_axis_heatmap` attribute as a tensor of zeros with
+        the same shape as `xy_axis_matrix`.
+
+        Args:
+            None
+            
+        Returns:
+            None
+        
+        Raises:
+            AssertionError: If xy_axis_matrix is None, not a torch.tensor,
+            or has an invalid shape.
+        """
+        # assert self.xy_axis_matrix is not None
+        # assert isinstance(self.xy_axis_matrix, torch.Tensor)
+        # assert len(self.xy_axis_matrix.shape) == 3
+
+        if self.verbose:
+            print("Building XY axis class matrices...")
+
+        self.xy_axis_class_matrix = torch.ones(
+            (self.xy_axis_matrix.shape[0], self.xy_axis_matrix.shape[1]),
+            device=self.device
+        )
+        self.xy_axis_class_matrix *= -2
+
+        if self.verbose:
+            print("Finished building XY axis class matrices.")
+
+    def _build_xy_axis_heatmaps(self) -> None:
+        """
+        Builds the XY axis class heatmaps based on the xy_axis_matrix.
+
+        Args:
+            None
+        
+        Returns:
+            None
+        
+        Raises:
+            AssertionError: If xy_axis_matrix is None, not a torch.tensor,
+            or has an invalid shape.
+        """
+        # assert self.xy_axis_matrix is not None
+        # assert isinstance(self.xy_axis_matrix, torch.Tensor)
+        # assert len(self.xy_axis_matrix.shape) == 3
+
+        if self.verbose:
+            print("Building XY axis heatmaps...")
+
+        self.xy_axis_heatmap = torch.zeros(
+            (self.xy_axis_matrix.shape[0], self.xy_axis_matrix.shape[1]),
+            device=self.device
+        )
+    
+        self.xy_axis_occupied_heatmap = torch.zeros(
+            (self.xy_axis_matrix.shape[0], self.xy_axis_matrix.shape[1]),
+            device=self.device
+        )
+
+        self.xy_axis_empty_heatmap = torch.zeros(
+            (self.xy_axis_matrix.shape[0], self.xy_axis_matrix.shape[1]),
+            device=self.device
+        )
+
+        if self.verbose:
+            print("Finished building XY axis heatmaps.")
+
+    def _build_xy_axis_linspace(self) -> None:
+        """
+        Build the x and y axis linspace for the XY axis.
+
+        This method calculates the x and y axis linspace based on the world
+        bounds and axis resolution. It also extracts the horizontal and
+        vertical boundaries, as well as the centers, from the axis linspace.
+        Finally, it plots the quadrant boundaries, quadrant centers, and voxels
+        for the XY axis.
+
+        Args:
+            None
+
+        Returns:
+            None
+            
+        Raises:
+            NotImplementedError: If the environment dimensionality != 2.
+        """
+
+        if self.verbose:
+            print("Building XY axis linspace...")
+
+        # if self.environment_dimensionality != 2:
+        #     raise NotImplementedError
+
+        # assert self.world_bounds_norm[0] / self.axis_resolution == \
+        #     int(self.world_bounds_norm[0] / self.axis_resolution)
+        # assert self.world_bounds_norm[1] / self.axis_resolution == \
+        #     int(self.world_bounds_norm[1] / self.axis_resolution)
+        
+        xal_steps: int = int(self.world_bounds_norm[0] / self.axis_resolution)
+        yal_steps: int = int(self.world_bounds_norm[1] / self.axis_resolution)
+        
+        xa = torch.linspace(
+            start=0,
+            end=self.world_bounds_norm[0],
+            steps=(2 * xal_steps + 1),
+            device=self.device
+        )
+        ya = torch.linspace(
+            start=0,
+            end=self.world_bounds_norm[1],
+            steps=(2 * yal_steps + 1),
+            device=self.device
+        )
+
+        # extract the horizontal and vertical boundaries from the axis linspace
+        xab = xa[::2]
+        yab = ya[::2]
+
+        # assert len(xab.shape) == 1
+        # assert len(yab.shape) == 1
+        # assert torch.min(xab) == 0
+        # assert torch.min(yab) == 0
+        # assert torch.max(xab) == self.world_bounds_norm[0]
+        # assert torch.max(yab) == self.world_bounds_norm[1]
+    
+        # extract the centers from the axis linspace
+        xac = xa[1::2]
+        yac = ya[1::2]
+
+        # assert len(xac.shape) == 1
+        # assert len(yac.shape) == 1
+        # assert torch.min(xac) == self.axis_resolution / 2
+        # assert torch.min(yac) == self.axis_resolution / 2
+        # assert torch.max(xac) == self.world_bounds_norm[0] - self.axis_resolution / 2
+        # assert torch.max(yac) == self.world_bounds_norm[1] - self.axis_resolution / 2
+
+        self.xy_axis_linspace = (xac, yac)
+
+        if self.verbose:
+            print("Finished building XY axis linspace.")
+
+        # if self.plotting_flags["plot_xy_voxels"]:
+        #     if self.verbose:
+        #         print("Plotting XY axis boundaries, centers, and voxels...")
+
+        #     vbp_sp: str = os.path.join(
+        #         self.log_dir,
+        #         "xy_voxel_boundaries.png"
+        #     )
+        #     spp.plot_quadrant_boundaries(
+        #         qb_x=xab,
+        #         qb_y=yab,
+        #         world_bounds_norm=self.world_bounds_norm,
+        #         save_path=vbp_sp,
+        #         title_header="XY Axis Voxel Boundaries",
+        #     )
+
+        #     vcmg = torch.meshgrid(xac, yac, indexing="xy")
+        #     vcmg = torch.stack(vcmg, dim=2)
+        #     vcmg = vcmg.reshape((vcmg.shape[0] * vcmg.shape[1], 2))
+        #     vcmg = vcmg.to(self.device)
+
+        #     vcp_sp: str = os.path.join(
+        #         self.log_dir,
+        #         "xy_voxel_centers.png"
+        #     )
+        #     spp.plot_quadrant_centers(
+        #         qcs=vcmg,
+        #         world_bounds_norm=self.world_bounds_norm,
+        #         save_path=vcp_sp,
+        #         title_header="XY Axis Voxel Centers",
+        #     )
+
+        #     vp_sp: str = os.path.join(
+        #         self.log_dir,
+        #         "xy_voxels.png"
+        #     )
+        #     spp.plot_quadrants_and_centers(
+        #         qcs=vcmg,
+        #         qb_x=xab,
+        #         qb_y=yab,
+        #         world_bounds_norm=self.world_bounds_norm,
+        #         save_path=vp_sp,
+        #         title_header="XY Axis Voxels",
+        #     )
+
+        #     if self.verbose:
+        #         print("Finished plotting XY axis boundaries, centers, and voxels.")
+
+
+    def _build_xy_axis_vectors(self) -> None:
+        """
+        Builds the XY axis vectors using the SSP generator.
+
+        This method generates the XY axis vectors based on the environment
+        dimensionality using the SSP generator. It ensures that the generated
+        vectors have the correct shape and dimensions.
+
+        Args:
+            None
+        
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the generated vectors have an incorrect shape
+            or dimension.
+        """
+
+        if self.verbose:
+            print("Building XY axis vectors...")
+
+        self.xy_axis_vectors = self.ssp_generator.generate(
+            self.environment_dimensionality
+        )
+
+        # axis_vector_sp: str = os.path.join(
+        #     self.log_dir,
+        #     "xy_axis_vectors.npy"
+        # )
+        # with open(axis_vector_sp, "wb") as f:
+        #     np.save(f, self.xy_axis_vectors.detach().cpu().numpy())
+
+        assert len(self.xy_axis_vectors.shape) == 2
+        assert self.xy_axis_vectors.shape[0] == self.environment_dimensionality
+        assert self.xy_axis_vectors.shape[1] == self.vsa_dimensions
+
+        if self.verbose:
+            print("Finished building XY axis vectors.")
+    
+    def _build_xy_axis_matrix(self) -> None:
+        """
+        Build the XY axis matrix using the xy_axis_linspace and xy_axis_vectors.
+
+        This method constructs a matrix representing the XY axis by iterating
+        over the xy_axis_linspace and xy_axis_vectors. For each combination of
+        x and y values, it calculates the corresponding vector using the power
+        function and binds them together using fractional binding.
+
+        Returns:
+            None
+        """
+
+        if self.verbose:
+            print("Building XY axis matrix...")
+
+        x_shape: tuple = self.xy_axis_linspace[0].shape[0]
+        y_shape: tuple = self.xy_axis_linspace[1].shape[0]
+
+        self.xy_axis_matrix = torch.zeros(
+            (x_shape, y_shape, self.vsa_dimensions),
+            device=self.device
+        )
+
+        x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(x_shape, 1)
+        y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(y_shape, 1)
+
+        x_powers = (self.xy_axis_linspace[0] / self.length_scale)
+        y_powers = (self.xy_axis_linspace[1] / self.length_scale)
+
+        x_power_matrix = x_powers.repeat(self.vsa_dimensions, 1).T
+        y_power_matrix = y_powers.repeat(self.vsa_dimensions, 1).T
+
+        x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
+        y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
+
+        x_axis_fd_matrix = x_axis_fd_matrix.unsqueeze(1)
+        y_axis_fd_matrix = y_axis_fd_matrix.unsqueeze(0)
+
+        self.xy_axis_matrix = x_axis_fd_matrix * y_axis_fd_matrix
+        self.xy_axis_matrix = torch.fft.ifftn(self.xy_axis_matrix, dim=-1).real
+
+        if self.verbose:
+            print("Finished building XY axis matrix.")
+
+    def _build_quadrant_indices(self) -> None:
+        """
+        Builds the quadrant indices based on the quadrant axis bounds and axis
+        resolution. The quadrant indices are calculated by dividing the
+        quadrant axis bounds by the axis resolution.
+        """
+
+        if self.verbose:
+            print("Building quadrant indices...")
+
+        quadrant_indices_x = self.quadrant_axis_bounds[0][0] / self.axis_resolution
+        quadrant_indices_y = self.quadrant_axis_bounds[0][1] / self.axis_resolution
+
+        self.quadrant_indices_x = quadrant_indices_x.to(torch.int)
+        self.quadrant_indices_y = quadrant_indices_y.to(torch.int)
+
+        if self.verbose:
+            print("Finished building quadrant indices.")
+
+    def _build_quadrant_memory_hierarchy(self) -> None:
+        """
+        Builds the memory hierarchy for the quadrants.
+
+        This method constructs the memory hierarchy for the quadrants based on
+        the specified VSA dimensionality. It initializes the quadrant memory
+        vectors as torch tensors with zeros.
+
+        Args:
+            None
+        
+        Returns:
+            None
+
+        Raises:
+            NotImplementedError: If the hierarchy has more than one level.
+        """
+
+        if self.verbose:
+            print("Building quadrant memory hierarchy...")
+
+        # if len(self.quadrant_hierarchy) > 1:
+        #     raise NotImplementedError
+
+        # Shape = {
+        #   0 = number of quadrants by number of quadrants flattened,
+        #   1 = number of dimensions in the vsa
+        # }
+        self.occupied_quadrant_memory_vectors = torch.zeros(
+            size=(
+                self.quadrant_hierarchy[0] ** self.environment_dimensionality,
+                self.vsa_dimensions
+            ),
+            device=self.device
+        )
+        self.empty_quadrant_memory_vectors = torch.clone(self.occupied_quadrant_memory_vectors)
+
+        if self.verbose:
+            print("Finished building quadrant memory hierarchy.")
+
+    def _build_quadrant_hierarchy(self) -> None:
+        """
+        Builds the quadrant hierarchy.
+
+        This method builds the quadrant hierarchy based on the specified sizes
+        in the `quadrant_hierarchy` list. Each level of the hierarchy is built
+        using the `build_quadrant_level` method.
+                
+        Args:
+            None
+        
+        Returns:
+            None
+
+        Raises:
+            AssertionError: If the `quadrant_hierarchy` list is empty or if the
+                first element is not an integer or is less than or equal to 0.
+        """
+
+        if self.verbose:
+            print("Building quadrant hierarchy...")
+        
+        # assert len(self.quadrant_hierarchy) == 1
+        # assert isinstance(self.quadrant_hierarchy[0], int)
+        # assert self.quadrant_hierarchy[0] > 0
+
+        iterator = self.quadrant_hierarchy
+
+        for level, size in enumerate(iterator):
+            self.build_quadrant_level(level, size)
+
+        if self.verbose:
+            print("Finished building quadrant hierarchy.")
+
+    def build_quadrant_level(self, level: int, size: int) -> None:
+        """
+        Build the quadrant level based on the given level and size.
+
+        Args:
+            level (int): The level of the quadrant.
+            size (int): The size of the quadrant.
+
+        Returns:
+            None
+
+        Raises:
+            NotImplementedError: If the level is not 0.
+        """
+
+        if self.verbose:
+            print(f"Building quadrant level [{level}]...")
+            print("World Bounds Norm: ", self.world_bounds_norm)
+            print("World Bounds Norm Quadrant X: ", self.world_bounds_norm[0] / size)
+            print("World Bounds Norm Quadrant X: ", self.world_bounds_norm[1] / size)
+            print("World Bounds Norm Quadrant X: ", self.world_bounds_norm[0] / self.axis_resolution / size)
+            print("World Bounds Norm Quadrant X: ", self.world_bounds_norm[1] / self.axis_resolution / size)
+
+        new_upper_bounds = [
+            size * np.ceil(self.world_bounds_norm[0] / size),
+            size * np.ceil(self.world_bounds_norm[1] / size)
+        ]
+
+        if self.verbose:
+            print("Num Quadrants = ", size * np.ceil(self.world_bounds_norm[0] / size))
+            print("Num Quadrants = ", size * np.ceil(self.world_bounds_norm[1] / size))
+
+            print("New Bounds Norm: ", new_upper_bounds)
+            print("New Bounds Norm Quadrant X: ", new_upper_bounds[0] / size)
+            print("New Bounds Norm Quadrant X: ", new_upper_bounds[1] / size)
+            print("New Bounds Norm Quadrant X: ", new_upper_bounds[0] / self.axis_resolution / size)
+            print("New Bounds Norm Quadrant X: ", new_upper_bounds[1] / self.axis_resolution / size)
+        
+        # Calculate the quadrant size across x and y axes in meters
+        # while also taking into account the level of the quadrant
+        if level == 0:
+            size_x_meters: float = new_upper_bounds[0] / size
+            size_y_meters: float = new_upper_bounds[1] / size
+        
+        size_x_bins = int(size_x_meters / self.axis_resolution)
+        size_y_bins = int(size_y_meters / self.axis_resolution)
+
+        if self.verbose:
+            print(f"Quadrant Level [{level}] - Number of Quadrants: {size ** 2}")
+            print(f"Quadrant Level [{level}] - Quadrant Size (Bins): {size_x_bins}, {size_y_bins}")
+            print(f"Quadrant Level [{level}] - Quadrant Size (Meters): {size_x_meters}, {size_y_meters}")
+            print(f"Quadrant Level [{level}] - Level Size (Bins): {size_x_bins * size}, {size_y_bins * size}")
+            print(f"Quadrant Level [{level}] - Level Size (Meters): {size_x_meters * size}, {size_y_meters * size}")
+
+        # Verify that the level size calculated based on all quadrant sizes
+        if level == 0:
+            assert size_x_meters * size == new_upper_bounds[0]
+            assert size_y_meters * size == new_upper_bounds[1]
+        else:
+            raise NotImplementedError
+
+        # calculate the vertical and horizontal bounds of the quadrants
+        qb_x = torch.linspace(0, new_upper_bounds[0], size + 1)
+        qb_y = torch.linspace(0, new_upper_bounds[1], size + 1)
+            
+        # calculate the quadrant centers
+        qcs_x = torch.linspace(0, new_upper_bounds[0], 2 * size + 1)[1::2]
+        qcs_y = torch.linspace(0, new_upper_bounds[1], 2 * size + 1)[1::2]
+
+        self.quadrant_axis_bounds.append((qb_x, qb_y))
+        
+        qcmg = torch.meshgrid(qcs_x, qcs_y, indexing="xy")
+        qcs = torch.stack(qcmg, dim=2)
+        qcs = qcs.reshape((size ** 2, 2))
+        qcs = qcs.to(self.device)
+
+        self.quadrant_centers.append(qcs)
+
+
 
