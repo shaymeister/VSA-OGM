@@ -108,6 +108,8 @@ class SingleAgentMappingManager:
             y_pred, pred_metrics = self.mapper.predict(X_test)
             complete_metric_dict.update(pred_metrics)
 
+            
+
     def _initialize_mapper(self) -> None:
         """
         Initialize the mapper based on the configuration.

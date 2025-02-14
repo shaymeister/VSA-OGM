@@ -111,11 +111,9 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
     """
     # class variables and objects
     num_observations: int = 0
+    ogm: np.ndarray = None
     pairwaise_distance = nn.PairwiseDistance()
 
-    # ----------------------------------
-    # empty variables for class methods
-    # ----------------------------------
     quadrant_axis_bounds: Tuple[Tuple[torch.tensor, torch.tensor]] = []
     quadrant_centers: Tuple[torch.tensor] = []
     occupied_quadrant_memory_vectors: torch.tensor = None
@@ -176,13 +174,12 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self.pdist = torch.nn.PairwiseDistance()
 
         self.ssp_generator = SSPGenerator(
-            dimensionality=self.vsa_dimensions,
+            dimensionality=self.vector_dimensionality,
             device=self.device,
-            length_scale=self.length_scale
+            length_scale=self.vector_length_scale
         )
 
-        self._build_quadrant_hierarchy()
-        self._build_quadrant_memory_hierarchy()
+        self.build_quadrant_level(0, self.num_tiles)
         self._build_quadrant_indices()
         self._build_xy_axis_linspace()
         self._build_xy_axis_vectors()
@@ -194,6 +191,16 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self._build_xy_axis_matrix()
         self._build_xy_axis_heatmaps()
         self._build_xy_axis_class_matrices()
+
+        self.occupied_quadrant_memory_vectors = torch.zeros(
+            size=(
+                self.num_tiles ** self.environment_dimensionality,
+                self.vector_dimensionality
+            ),
+            device=self.device
+        )
+        self.empty_quadrant_memory_vectors = torch.clone(self.occupied_quadrant_memory_vectors)
+
 
     def fit(self, X: List[np.ndarray], y: List[np.ndarray]) -> None:
         """
@@ -218,6 +225,34 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         X = X.to(self.device)
         y = y.to(self.device)
 
+        X_occupied = X[y == 1]
+        y_occupied = y[y == 1]
+        X_empty = X[y == 0]
+        y_empty = y[y == 0]
+        
+        self.process_observation(X_occupied, occupied=True)
+        self.process_observation(X_empty, occupied=False)
+
+        occupied_heatmap = self.xy_axis_occupied_heatmap
+        empty_heatmap = self.xy_axis_empty_heatmap
+
+        occupied_heatmap /= torch.max(occupied_heatmap)
+        empty_heatmap /= torch.max(empty_heatmap)
+
+        occupied_heatmap = torch.square(occupied_heatmap)
+        empty_heatmap = torch.square(empty_heatmap)
+
+        ogm = occupied_heatmap - empty_heatmap
+        ogm = (ogm + 1) / 2
+        ogm = ogm.T
+        
+        self.ogm = ogm.cpu().numpy()
+
+        for logger in self.loggers:
+            logger.log_image(self.ogm, "ogm")
+        
+        raise NotImplementedError
+
         return fit_metrics
     
     def predict(self, X: List[np.ndarray]) -> List[np.ndarray]:
@@ -241,7 +276,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         return predictions, prediction_metrics
     
     def process_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
-            labels: Union[np.ndarray, torch.tensor], occupied: bool = True) -> None:
+            occupied: bool = True) -> None:
         """
         Processes an observation represented as a point cloud and the
         corresponding labels for each point.
@@ -254,14 +289,11 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             None
         """
 
-        encoding_time = time.time()
-
         point_cloud[:, 0] -= self.world_bounds[0]
         point_cloud[:, 1] -= self.world_bounds[2]
 
         ups = point_cloud
 
-        
         # -----------------------------------------------
         # Calculate quadrant memories for each new point
         # using a multipoint L2 distance calculation
@@ -273,95 +305,31 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         qcm: torch.tensor = qcm.repeat(ups.shape[0], 1, 1)
         dists: torch.tensor = self.pdist(ups, qcm)
         closest_quads: torch.tensor = torch.argmin(dists, dim=1)
-        # if self.verbose:
-        #     print(f"Distance Time: {time.time() - dist_time}")
-
-        # assert len(ups.shape) == 3
-        # assert len(qcm.shape) == 3
-        # assert ups.shape[0] == qcm.shape[0]
-        # assert ups.shape[0] == ups_labels.shape[0]
-        # assert ups.shape[1] == 1
-        # assert ups.shape[2] == self.environment_dimensionality
-        # assert qcm.shape[1] == self.quadrant_hierarchy[0] ** self.environment_dimensionality
-        # assert qcm.shape[2] == self.environment_dimensionality
-
-        ups = ups.squeeze(1)
     
+        ups = ups.squeeze(1)
+
         # ---------------------------
         # Matrix Encoding Approach
         # ---------------------------
-        # unsqueeze_time = time.time()
-
         x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
         y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
 
-        # if self.verbose:
-        #     print("Unsqueeze Time: ", time.time() - unsqueeze_time)
+        x_powers = (ups[:, 0] / self.vector_length_scale)
+        y_powers = (ups[:, 1] / self.vector_length_scale)
 
-        # power_time = time.time()
-
-        x_powers = (ups[:, 0] / self.length_scale)
-        y_powers = (ups[:, 1] / self.length_scale)
-
-        # if self.verbose:
-        #     print("Power Time: ", time.time() - power_time)
-
-        # repreat_time = time.time()
-
-        x_power_matrix = x_powers.repeat(self.vsa_dimensions, 1).T
-        y_power_matrix = y_powers.repeat(self.vsa_dimensions, 1).T
-
-        # if self.verbose:
-        #     print("Repeat Time: ", time.time() - repreat_time)
-
-        # exponent_time = time.time()
+        x_power_matrix = x_powers.repeat(self.vector_dimensionality, 1).T
+        y_power_matrix = y_powers.repeat(self.vector_dimensionality, 1).T
 
         x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
         y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
 
-        # if self.verbose:
-        #     print("Exponent Time: ", time.time() - exponent_time)
-
-        # unsqueeze_time = time.time()
-
         x_axis_fd_matrix = x_axis_fd_matrix.unsqueeze(0)
         y_axis_fd_matrix = y_axis_fd_matrix.unsqueeze(0)
-        
-        # if self.verbose:
-        #     print("Unsqueeze Time: ", time.time() - unsqueeze_time)
-
-        # concat_time = time.time()
 
         xy_axis_fd_matrix = torch.concatenate((x_axis_fd_matrix, y_axis_fd_matrix), dim=0)
-
-        # if self.verbose:
-        #     print("Concat Time: ", time.time() - concat_time)
-
-        # prod_time = time.time()
-
         xy_axis_fd_matrix = torch.prod(xy_axis_fd_matrix, dim=0)
-
-        # if self.verbose:
-        #     print("Prod Time: ", time.time() - prod_time)
-
-        # ifft_time = time.time()
-
         xy_axis_fd_matrix = torch.fft.ifft(xy_axis_fd_matrix, dim=1)
-
-        # if self.verbose:
-        #     print("IFFT Time: ", time.time() - ifft_time)
-
-        # real_time = time.time()
-
         xy_axis_fd_matrix = xy_axis_fd_matrix.real
-
-        # if self.verbose:
-        #     print("Real Time: ", time.time() - real_time)
-
-        # # Version 2 with index based approach
-        # total_time = time.time()
-
-        
 
         if occupied:
             self.occupied_quadrant_memory_vectors.index_add_(
@@ -369,7 +337,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
                 closest_quads,
                 xy_axis_fd_matrix.float()
             )
-            # self.occupied_quadrant_memory_vectors / torch.norm(self.occupied_quadrant_memory_vectors, dim=0)
         else:
             self.empty_quadrant_memory_vectors.index_add_(
                 0,
@@ -377,19 +344,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
                 xy_axis_fd_matrix.float()
             )
 
-        print(f"Encoding Time: {time.time() - encoding_time}")
-
-        # query_time = time.time()
-
-        start_time_decoding = time.time()
-        decoding_time_total = 0.0
-
-        # counter_matrix = torch.range(0, self.occupied_quadrant_memory_vectors.shape[0], device=self.device)
-        # counter_matrix = (counter_matrix.unsqueeze(1) == closest_quads).any(dim=1)
-            
-
-        
-        start_time = time.time()
         if occupied:
             norm_qv = self.occupied_quadrant_memory_vectors / torch.norm(
                 self.occupied_quadrant_memory_vectors, dim=1, keepdim=True
@@ -411,20 +365,11 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             counter = 0
             for j, y_lower in enumerate(self.quadrant_indices_y[:-1]):
                     for i, x_lower in enumerate(self.quadrant_indices_x[:-1]):
-
-                        
-
                         # if counter in closest_quads:
                         x_upper = self.quadrant_indices_x[i + 1]
                         y_upper = self.quadrant_indices_y[j + 1]
 
                         self.boolean_results_mask[counter, x_lower:x_upper, y_lower:y_upper] = True
-
-                        start_time = time.time()
-
-                        # temp_xy_axis_heatmap[x_lower:x_upper, y_lower:y_upper] = \
-                        #     result[counter, x_lower:x_upper, y_lower:y_upper]
-                        
                         counter += 1
 
         result[~self.boolean_results_mask] = 0
@@ -435,9 +380,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             self.xy_axis_occupied_heatmap = temp_xy_axis_heatmap
         else:
             self.xy_axis_empty_heatmap = temp_xy_axis_heatmap    
-        self.xy_axis_occupied_heatmap = torch.nan_to_num(self.xy_axis_occupied_heatmap)
-
-        self.obs_count += 1
 
     def query_point_thetas(self, points: Union[np.ndarray, torch.tensor],
                 return_as_numpy: bool = True) -> torch.tensor:
@@ -761,7 +703,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         assert len(self.xy_axis_vectors.shape) == 2
         assert self.xy_axis_vectors.shape[0] == self.environment_dimensionality
-        assert self.xy_axis_vectors.shape[1] == self.vsa_dimensions
+        assert self.xy_axis_vectors.shape[1] == self.vector_dimensionality
 
         if self.verbose:
             print("Finished building XY axis vectors.")
@@ -786,18 +728,18 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         y_shape: tuple = self.xy_axis_linspace[1].shape[0]
 
         self.xy_axis_matrix = torch.zeros(
-            (x_shape, y_shape, self.vsa_dimensions),
+            (x_shape, y_shape, self.vector_dimensionality),
             device=self.device
         )
 
         x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(x_shape, 1)
         y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(y_shape, 1)
 
-        x_powers = (self.xy_axis_linspace[0] / self.length_scale)
-        y_powers = (self.xy_axis_linspace[1] / self.length_scale)
+        x_powers = (self.xy_axis_linspace[0] / self.vector_length_scale)
+        y_powers = (self.xy_axis_linspace[1] / self.vector_length_scale)
 
-        x_power_matrix = x_powers.repeat(self.vsa_dimensions, 1).T
-        y_power_matrix = y_powers.repeat(self.vsa_dimensions, 1).T
+        x_power_matrix = x_powers.repeat(self.vector_dimensionality, 1).T
+        y_power_matrix = y_powers.repeat(self.vector_dimensionality, 1).T
 
         x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
         y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
@@ -860,8 +802,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # }
         self.occupied_quadrant_memory_vectors = torch.zeros(
             size=(
-                self.quadrant_hierarchy[0] ** self.environment_dimensionality,
-                self.vsa_dimensions
+                self.num_tiles ** self.environment_dimensionality,
+                self.vector_dimensionality
             ),
             device=self.device
         )
@@ -870,47 +812,12 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         if self.verbose:
             print("Finished building quadrant memory hierarchy.")
 
-    def _build_quadrant_hierarchy(self) -> None:
-        """
-        Builds the quadrant hierarchy.
-
-        This method builds the quadrant hierarchy based on the specified sizes
-        in the `quadrant_hierarchy` list. Each level of the hierarchy is built
-        using the `build_quadrant_level` method.
-                
-        Args:
-            None
-        
-        Returns:
-            None
-
-        Raises:
-            AssertionError: If the `quadrant_hierarchy` list is empty or if the
-                first element is not an integer or is less than or equal to 0.
-        """
-
-        if self.verbose:
-            print("Building quadrant hierarchy...")
-        
-        # assert len(self.quadrant_hierarchy) == 1
-        # assert isinstance(self.quadrant_hierarchy[0], int)
-        # assert self.quadrant_hierarchy[0] > 0
-
-        iterator = self.quadrant_hierarchy
-
-        for level, size in enumerate(iterator):
-            self.build_quadrant_level(level, size)
-
-        if self.verbose:
-            print("Finished building quadrant hierarchy.")
-
     def build_quadrant_level(self, level: int, size: int) -> None:
         """
         Build the quadrant level based on the given level and size.
 
         Args:
             level (int): The level of the quadrant.
-            size (int): The size of the quadrant.
 
         Returns:
             None

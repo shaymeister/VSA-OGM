@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import numpy as np
 from omegaconf import DictConfig, OmegaConf
 import os
 import shutil
@@ -60,6 +62,19 @@ class WANBDLogger(BaseLogger):
         WandB will log all print statements automatically.
         """
         return
+    
+    def log_image(self, image: np.ndarray, caption: str) -> None:
+        """
+        Log an image to the WandB logger.
+
+        Arguments:
+        ----------
+        image : np.ndarray
+            The image to log.
+        caption : str
+            The caption for the image.
+        """
+        pass
     
     def close(self) -> None:
         """
@@ -124,6 +139,21 @@ class OGMLogger(BaseLogger):
         self.std_out_file.write(string + "\n")
         if self.verbose:
             print(f"{self.print_header} wrote string to file")
+
+    def log_image(self, image: np.ndarray, caption: str) -> None:
+        """
+        Log an image to the logger.
+
+        Arguments:
+        ----------
+        image : np.ndarray
+            The image to log.
+        caption : str
+            The caption for the image.
+        """
+        plt.imshow(image)
+        plt.title(caption)
+        plt.savefig(os.path.join(self.experiment_dir, f"{caption}.png"))
 
     def close(self) -> None:
         """

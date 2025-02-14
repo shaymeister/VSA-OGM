@@ -20,8 +20,9 @@ mapping:
   mapping_type: "SA_VSA_OGM"
   num_tiles: 1
   seed: 42
-  vector_dimensionality: 256
+  vector_dimensionality: 512
   vector_length_scale: 1.0
+  verbose: True
 mapping_manager:
   metrics: ["auc", "f1", "precision", "recall", "accuracy", "nll"]
   num_mappers: 1
