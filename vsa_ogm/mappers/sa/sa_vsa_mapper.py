@@ -1,5 +1,7 @@
 import numpy as np
 from omegaconf import DictConfig
+from skimage.filters.rank import entropy
+from skimage.morphology import disk
 import torch
 import torch.nn as nn
 from typing import List, Tuple, Union
@@ -147,6 +149,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # extract parameters from the config
         # -----------------------------------------------
         self.axis_resolution: int = config.mapping.axis_resolution
+        self.decoding_method: str = config.mapping.decoding.method
+        self.decoding_alpha: float = config.mapping.decoding.alpha
+        self.decoding_disk_radii_1: int = config.mapping.decoding.disk_radii_1
+        self.decoding_disk_radii_2: int = config.mapping.decoding.disk_radii_2
         self.device: str = config.mapping.device
         self.num_tiles: int = config.mapping.num_tiles
         self.seed: int = config.mapping.seed
@@ -229,29 +235,29 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         y_occupied = y[y == 1]
         X_empty = X[y == 0]
         y_empty = y[y == 0]
-        
-        self.process_observation(X_occupied, occupied=True)
-        self.process_observation(X_empty, occupied=False)
+
+        if len(X_occupied) > 0:
+            self.encode_observation(X_occupied, occupied=True)
+
+        if len(X_empty) > 0:
+            self.encode_observation(X_empty, occupied=False)
 
         occupied_heatmap = self.xy_axis_occupied_heatmap
         empty_heatmap = self.xy_axis_empty_heatmap
 
-        occupied_heatmap /= torch.max(occupied_heatmap)
-        empty_heatmap /= torch.max(empty_heatmap)
-
-        occupied_heatmap = torch.square(occupied_heatmap)
-        empty_heatmap = torch.square(empty_heatmap)
+        occupied_heatmap, empty_heatmap = self.decode_heatmaps(
+            occupied_heatmap, empty_heatmap
+        )
 
         ogm = occupied_heatmap - empty_heatmap
-        ogm = (ogm + 1) / 2
         ogm = ogm.T
         
         self.ogm = ogm.cpu().numpy()
 
         for logger in self.loggers:
-            logger.log_image(self.ogm, "ogm")
-        
-        raise NotImplementedError
+            logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
+
+        self.num_observations += 1
 
         return fit_metrics
     
@@ -271,11 +277,420 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         if isinstance(X, np.ndarray):
             X = torch.tensor(X)
         
-        X = X.to(self.device)
+        X = X.to("cpu")
+
+        X[:, 0] -= self.world_bounds[0]
+        X[:, 1] -= self.world_bounds[2]
+        X = X / self.axis_resolution
+        X = torch.round(X)
+        X = X.long()
+        
+        predictions: np.ndarray = self.ogm[X[:, 0], X[:, 1]]
 
         return predictions, prediction_metrics
+
+    def decode_heatmaps(self, occupied_heatmap: torch.tensor,
+            empty_heatmap: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
+        """
+        TODO Finish Documentation
+        """
+
+        # -----------------------------------------------
+        # Decoding Approach 1: this is the default we have
+        #   been using in all tests
+        # -----------------------------------------------
+        if self.decoding_method == "default":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 2: normalize the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 3: square the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 4: cubic the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_methods == "cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+
+        # -----------------------------------------------
+        # Decoding Approach 5: renyi entropy
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi":
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 6: renyi entropy with
+        #   squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi_squaring":
+            occupied_heatmap = torch.pow(occupied_heatmap, 2)
+            empty_heatmap = torch.pow(empty_heatmap, 2)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 7: renyi entropy with
+        #   cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 8: renyi entropy with
+        #   normalization
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 9: renyi entropy with
+        #   normalization and squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 2)
+            empty_heatmap = torch.pow(empty_heatmap, 2)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 10: renyi entropy with
+        #   normalization and cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "renyi_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 11: ReLU
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu":
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 12: ReLU with squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 13: ReLU with cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 14: ReLU with normalization
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 15: ReLU with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 16: ReLU with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "relu_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 17: TanH
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh":
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 18: TanH with squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 19: TanH with cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 20: TanH with normalization
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 21: TanH with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 22: TanH with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "tanh_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 23: Sigmoid
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid":
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 24: Sigmoid with squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 25: Sigmoid with cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 26: Sigmoid with normalization
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 27: Sigmoid with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 28: Sigmoid with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "sigmoid_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 29: Softmax
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax":
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Decoding Approach 30: Softmax with squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Decoding Approach 31: Softmax with cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Decoding Approach 32: Softmax with normalization
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Decoding Approach 33: Softmax with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Decoding Approach 34: Softmax with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_methods == "softmax_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+            occupied_heatmap = stacked_heatmap[0]
+            empty_heatmap = stacked_heatmap[1]
+
+        # -----------------------------------------------
+        # Unknown Decoding Method
+        # -----------------------------------------------
+        else:
+            raise ValueError(f"Unknown decoding method: {self.decoding_method}")
+
+        return occupied_heatmap, empty_heatmap
     
-    def process_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
+    def encode_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
             occupied: bool = True) -> None:
         """
         Processes an observation represented as a point cloud and the

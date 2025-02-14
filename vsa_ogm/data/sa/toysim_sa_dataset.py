@@ -58,12 +58,12 @@ class ToySimSingleAgentDataset(BaseSingleAgentDataset):
         Returns:
             Tuple: A tuple containing the data and the world size.
         """
-        measurement_file = np.load(self.files[self.time_step])
+        measurement_file = np.load(self.files[idx])
 
         distance_data: np.ndarray = measurement_file["dist_theta_at_t"]
         laser_data: np.ndarray = measurement_file["laser_data_xy_at_t"]
         max_laser_distance: float = measurement_file["max_laser_distance"]
-        pose_data: np.ndarray = measurement_file["all_robot_poses"][self.time_step, :]
+        pose_data: np.ndarray = measurement_file["all_robot_poses"][idx, :]
 
         measurement_file.close()
 

@@ -1,5 +1,6 @@
 import numpy as np
 from omegaconf import DictConfig
+from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from typing import List
 
@@ -94,6 +95,16 @@ class SingleAgentMappingManager:
                 stratify=y
             )
 
+            if self.plotting_flags.plot_point_clouds:
+                for logger in self.loggers:
+                    logger.log_point_cloud(
+                        X_train,
+                        X_test,
+                        y_train,
+                        y_test,
+                        title=f"Dataset_Step_{idx}",
+                        epoch=idx)
+
             # store the training and testing data
             self.all_X_train.append(X_train)
             self.all_y_train.append(y_train)
@@ -108,7 +119,32 @@ class SingleAgentMappingManager:
             y_pred, pred_metrics = self.mapper.predict(X_test)
             complete_metric_dict.update(pred_metrics)
 
-            
+            # calculate the performance metrics based on the predictions
+            for metric in self.metrics:
+                if metric == "auc":
+                    fpr, tpr, _ = metrics.roc_curve(y_test, y_pred)
+                    auc = metrics.auc(fpr, tpr)
+                    complete_metric_dict["auc"] = auc
+                elif metric == "nll":
+                    y_test = y_test.cpu().numpy()
+                    nll = metrics.log_loss(y_test, y_pred, labels=[0, 1])
+                    complete_metric_dict["nll"] = nll
+                else:
+                    raise NotImplementedError(f"Metric {metric} not implemented.")
+
+            if self.plotting_flags.plot_point_clouds:
+                for logger in self.loggers:
+                    logger.log_point_cloud(
+                        X_train,
+                        X_test,
+                        y_train,
+                        y_pred,
+                        title=f"TestingPredictions_{idx}",
+                        epoch=idx)
+
+            # log the metrics
+            for logger in self.loggers:
+                logger.log_metrics(complete_metric_dict, idx)
 
     def _initialize_mapper(self) -> None:
         """
