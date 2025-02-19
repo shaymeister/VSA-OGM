@@ -325,14 +325,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 4: cubic the individual
         #   heatmaps
         # -----------------------------------------------
-        elif self.decoding_methods == "cubic":
+        elif self.decoding_method == "cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
 
         # -----------------------------------------------
         # Decoding Approach 5: renyi entropy
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi":
+        elif self.decoding_method == "renyi":
             occ_data = occupied_heatmap.cpu().numpy()
             empty_data = empty_heatmap.cpu().numpy()
             occ_data *= 255
@@ -348,7 +348,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 6: renyi entropy with
         #   squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi_squaring":
+        elif self.decoding_method == "renyi_squaring":
             occupied_heatmap = torch.pow(occupied_heatmap, 2)
             empty_heatmap = torch.pow(empty_heatmap, 2)
             occ_data = occupied_heatmap.cpu().numpy()
@@ -366,7 +366,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 7: renyi entropy with
         #   cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi_cubic":
+        elif self.decoding_method == "renyi_cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
             occ_data = occupied_heatmap.cpu().numpy()
@@ -384,7 +384,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 8: renyi entropy with
         #   normalization
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi_normalize":
+        elif self.decoding_method == "renyi_normalize":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occ_data = occupied_heatmap.cpu().numpy()
@@ -402,7 +402,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 9: renyi entropy with
         #   normalization and squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi_normalize_squaring":
+        elif self.decoding_method == "renyi_normalize_squaring":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 2)
@@ -422,7 +422,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 10: renyi entropy with
         #   normalization and cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "renyi_normalize_cubic":
+        elif self.decoding_method == "renyi_normalize_cubic":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
@@ -441,14 +441,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 11: ReLU
         # -----------------------------------------------
-        elif self.decoding_methods == "relu":
+        elif self.decoding_method == "relu":
             occupied_heatmap = torch.relu(occupied_heatmap)
             empty_heatmap = torch.relu(empty_heatmap)
         
         # -----------------------------------------------
         # Decoding Approach 12: ReLU with squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "relu_squaring":
+        elif self.decoding_method == "relu_squaring":
             occupied_heatmap = torch.square(occupied_heatmap)
             empty_heatmap = torch.square(empty_heatmap)
             occupied_heatmap = torch.relu(occupied_heatmap)
@@ -457,7 +457,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 13: ReLU with cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "relu_cubic":
+        elif self.decoding_method == "relu_cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
             occupied_heatmap = torch.relu(occupied_heatmap)
@@ -466,7 +466,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 14: ReLU with normalization
         # -----------------------------------------------
-        elif self.decoding_methods == "relu_normalize":
+        elif self.decoding_method == "relu_normalize":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.relu(occupied_heatmap)
@@ -476,7 +476,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 15: ReLU with normalization
         #   and squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "relu_normalize_squaring":
+        elif self.decoding_method == "relu_normalize_squaring":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.square(occupied_heatmap)
@@ -488,7 +488,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 16: ReLU with normalization
         #   and cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "relu_normalize_cubic":
+        elif self.decoding_method == "relu_normalize_cubic":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
@@ -499,14 +499,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 17: TanH
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh":
+        elif self.decoding_method == "tanh":
             occupied_heatmap = torch.tanh(occupied_heatmap)
             empty_heatmap = torch.tanh(empty_heatmap)
 
         # -----------------------------------------------
         # Decoding Approach 18: TanH with squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh_squaring":
+        elif self.decoding_method == "tanh_squaring":
             occupied_heatmap = torch.square(occupied_heatmap)
             empty_heatmap = torch.square(empty_heatmap)
             occupied_heatmap = torch.tanh(occupied_heatmap)
@@ -515,7 +515,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 19: TanH with cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh_cubic":
+        elif self.decoding_method == "tanh_cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
             occupied_heatmap = torch.tanh(occupied_heatmap)
@@ -524,7 +524,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 20: TanH with normalization
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh_normalize":
+        elif self.decoding_method == "tanh_normalize":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.tanh(occupied_heatmap)
@@ -534,7 +534,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 21: TanH with normalization
         #   and squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh_normalize_squaring":
+        elif self.decoding_method == "tanh_normalize_squaring":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.square(occupied_heatmap)
@@ -546,7 +546,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 22: TanH with normalization
         #   and cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "tanh_normalize_cubic":
+        elif self.decoding_method == "tanh_normalize_cubic":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
@@ -557,14 +557,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 23: Sigmoid
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid":
+        elif self.decoding_method == "sigmoid":
             occupied_heatmap = torch.sigmoid(occupied_heatmap)
             empty_heatmap = torch.sigmoid(empty_heatmap)
 
         # -----------------------------------------------
         # Decoding Approach 24: Sigmoid with squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid_squaring":
+        elif self.decoding_method == "sigmoid_squaring":
             occupied_heatmap = torch.square(occupied_heatmap)
             empty_heatmap = torch.square(empty_heatmap)
             occupied_heatmap = torch.sigmoid(occupied_heatmap)
@@ -573,7 +573,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 25: Sigmoid with cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid_cubic":
+        elif self.decoding_method == "sigmoid_cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
             occupied_heatmap = torch.sigmoid(occupied_heatmap)
@@ -582,7 +582,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 26: Sigmoid with normalization
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid_normalize":
+        elif self.decoding_method == "sigmoid_normalize":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.sigmoid(occupied_heatmap)
@@ -592,7 +592,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 27: Sigmoid with normalization
         #   and squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid_normalize_squaring":
+        elif self.decoding_method == "sigmoid_normalize_squaring":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.square(occupied_heatmap)
@@ -604,7 +604,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 28: Sigmoid with normalization
         #   and cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "sigmoid_normalize_cubic":
+        elif self.decoding_method == "sigmoid_normalize_cubic":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
@@ -615,7 +615,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 29: Softmax
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax":
+        elif self.decoding_method == "softmax":
             stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
             stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
             occupied_heatmap = stacked_heatmap[0]
@@ -624,7 +624,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 30: Softmax with squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax_squaring":
+        elif self.decoding_method == "softmax_squaring":
             occupied_heatmap = torch.square(occupied_heatmap)
             empty_heatmap = torch.square(empty_heatmap)
             stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
@@ -635,7 +635,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 31: Softmax with cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax_cubic":
+        elif self.decoding_method == "softmax_cubic":
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
             stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
@@ -646,7 +646,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         # Decoding Approach 32: Softmax with normalization
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax_normalize":
+        elif self.decoding_method == "softmax_normalize":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
@@ -658,7 +658,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 33: Softmax with normalization
         #   and squaring
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax_normalize_squaring":
+        elif self.decoding_method == "softmax_normalize_squaring":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.square(occupied_heatmap)
@@ -672,7 +672,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Decoding Approach 34: Softmax with normalization
         #   and cubic
         # -----------------------------------------------
-        elif self.decoding_methods == "softmax_normalize_cubic":
+        elif self.decoding_method == "softmax_normalize_cubic":
             occupied_heatmap /= torch.max(occupied_heatmap)
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
