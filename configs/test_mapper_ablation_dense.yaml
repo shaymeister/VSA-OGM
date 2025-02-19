@@ -1,12 +1,13 @@
 experiment_name: "baseline_mapping_tester"
 experiment_type: "single_agent"
 data:
-  dataset_name: "toysim"
-  data_dir: "datasets/sa/toysim0/npz"
-  file_prefix: "results_frame_"
-  file_suffix: ".npz"
+  dataset_name: "ablation"
+  data_dir: "datasets/sa/"
+  file_prefix: "ablation_dense"
+  file_suffix: ".pkl"
+  num_chunks: 150
   test_split: 0.2
-  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
+  world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
 logging:
   enabled: True
   log_images: True
@@ -26,7 +27,7 @@ mapping:
   mapping_type: "SA_VSA_OGM"
   num_tiles: 1
   seed: 42
-  vector_dimensionality: 512
+  vector_dimensionality: 2048
   vector_length_scale: 2.0
   verbose: True
 mapping_manager:
