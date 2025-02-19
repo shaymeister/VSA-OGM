@@ -66,7 +66,7 @@ class AblationSingleAgentDataset(BaseSingleAgentDataset):
         Returns:
             int: The length of the dataset.
         """
-        return self.points.shape[0]
+        return len(self.points)
 
     def __getitem__(self, idx: int) -> Tuple:
         """
