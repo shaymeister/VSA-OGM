@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import shutil
 from typing import Dict
+import wandb
 
 class BaseLogger:
     """
@@ -43,27 +44,62 @@ class WANBDLogger(BaseLogger):
     """
     def __init__(self, config: DictConfig, print_header: str = "(WandB Logger)") -> None:
         """
-        TODO Finish Documentation
+        Initializes the logger with the given configuration.
+
+        Args:
+            config (DictConfig): The configuration object containing logging
+                settings.
+            print_header (str, optional): The header to print for the logger.
+                Defaults to "(WandB Logger)".
+
+        Attributes:
+            config (DictConfig): The configuration object containing logging
+                settings.
+            project_name (str): The name of the WandB project.
+            experiment_name (str): The name of the experiment.
+            notes (str): Additional notes for the WandB run.
+            verbose (bool): Verbosity level for the WandB logger.
+            run (wandb.sdk.wandb_run.Run): The WandB run object initialized
+                with the given project name, experiment name, and notes.
         """
         super().__init__(config, print_header)
         self.config = config
 
+        self.enabled: bool = config.wandb.enabled
         self.project_name: str = config.wandb.project_name
         self.experiment_name: str = config.experiment_name
         self.notes: str = config.wandb.notes
         self.verbose: bool = config.wandb.verbose
 
+        if not self.enabled:
+            return
+
+        self.run = wandb.init(project=self.project_name, name=self.experiment_name, notes=self.notes)
+
     def log_config(self, config: DictConfig) -> None:
         """
-        TODO Finish Documentation
+        Log the configuration to the WandB logger.
         """
-        print(f"{self.print_header} (TODO) Logging Configuration")
+        if not self.enabled:
+            return
+        
+        print(f"{self.print_header} Logging Configuration")
+        wandb.config.update(OmegaConf.to_container(config))
 
     def log_string(self, string: str) -> None:
         """
         This methods is simply a pass-through for the print function because
         WandB will log all print statements automatically.
+
+        Args:
+            string (str): The string
+
+        Returns:
+            None
         """
+        if not self.enabled:
+            return
+        
         return
     
     def log_image(self, image: np.ndarray, caption: str, epoch: int = -1) -> None:
@@ -77,7 +113,10 @@ class WANBDLogger(BaseLogger):
         caption : str
             The caption for the image.
         """
-        pass
+        if not self.enabled:
+            return
+        
+        return
 
     def log_metrics(self, metrics: Dict[str, float], epoch: int) -> None:
         """
@@ -90,7 +129,11 @@ class WANBDLogger(BaseLogger):
         epoch : int
             The epoch number.
         """
-        pass
+        if not self.enabled:
+            return
+        
+        print(f"{self.print_header} Logging Metrics")
+        wandb.log(metrics, step=epoch)
 
     def log_point_cloud(self, X_train: np.ndarray, X_test: np.ndarray,
                         y_train: np.ndarray, y_test: np.ndarray,
@@ -113,13 +156,19 @@ class WANBDLogger(BaseLogger):
         epoch : int
             The epoch number.
         """
-        pass
+        if not self.enabled:
+            return
+        
+        return
     
     def close(self) -> None:
         """
         Close the WandB session.
         """
-        pass
+        if not self.enabled:
+            return
+        
+        return
 
 
 class OGMLogger(BaseLogger):
