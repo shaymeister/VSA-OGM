@@ -126,7 +126,6 @@ class SingleAgentMappingManager:
                     auc = metrics.auc(fpr, tpr)
                     complete_metric_dict["auc"] = auc
                 elif metric == "nll":
-                    y_test = y_test.cpu().numpy()
                     nll = metrics.log_loss(y_test, y_pred, labels=[0, 1])
                     complete_metric_dict["nll"] = nll
                 else:
