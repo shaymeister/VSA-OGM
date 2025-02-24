@@ -168,7 +168,7 @@ class WANBDLogger(BaseLogger):
         if not self.enabled:
             return
         
-        return
+        self.run.finish()
 
 
 class OGMLogger(BaseLogger):
