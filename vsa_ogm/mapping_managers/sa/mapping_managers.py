@@ -116,18 +116,27 @@ class SingleAgentMappingManager:
             complete_metric_dict.update(fit_metrics)
 
             # predict the testing data
-            y_pred, pred_metrics = self.mapper.predict(X_test)
+            all_y_test_np = np.concatenate(self.all_y_test)
+            all_X_test_np = np.vstack(self.all_X_test)
+
+            y_pred, pred_metrics = self.mapper.predict(all_X_test_np)
             complete_metric_dict.update(pred_metrics)
 
             # calculate the performance metrics based on the predictions
             for metric in self.metrics:
                 if metric == "auc":
-                    fpr, tpr, _ = metrics.roc_curve(y_test, y_pred)
-                    auc = metrics.auc(fpr, tpr)
-                    complete_metric_dict["auc"] = auc
+                    train_fpr, train_tpr, _ = metrics.roc_curve(y_train, self.mapper.predict(X_train)[0])
+                    test_fpr, test_tpr, _ = metrics.roc_curve(all_y_test_np, y_pred)
+                    train_auc = metrics.auc(train_fpr, train_tpr)
+                    test_auc = metrics.auc(test_fpr, test_tpr)
+                    complete_metric_dict["train_auc"] = train_auc
+                    complete_metric_dict["test_auc"] = test_auc
+
                 elif metric == "nll":
-                    nll = metrics.log_loss(y_test, y_pred, labels=[0, 1])
-                    complete_metric_dict["nll"] = nll
+                    train_nll = metrics.log_loss(y_train, self.mapper.predict(X_train)[0], labels=[0, 1])
+                    test_nll = metrics.log_loss(all_y_test_np, y_pred, labels=[0, 1])
+                    complete_metric_dict["train_nll"] = train_nll
+                    complete_metric_dict["test_nll"] = test_nll
                 else:
                     raise NotImplementedError(f"Metric {metric} not implemented.")
 
@@ -137,7 +146,7 @@ class SingleAgentMappingManager:
                         X_train,
                         X_test,
                         y_train,
-                        y_pred,
+                        y_test,
                         title=f"TestingPredictions_{idx}",
                         epoch=idx)
 
