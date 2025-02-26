@@ -14,19 +14,19 @@ logging:
   save_dir: "logs"
   verbose: False
 mapping:
-  axis_resolution: 0.5
+  axis_resolution: 1.0
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:
-    method: "default"
+    method: "renyi_normalize_squaring"
     alpha: None
     disk_radii_1: 3
-    disk_radii_2: 3
+    disk_radii_2: 5
   device: "cuda"
   mapping_type: "SA_VSA_OGM"
-  num_tiles: 1
+  num_tiles: 2
   seed: 42
-  vector_dimensionality: 2048
+  vector_dimensionality: 32000
   vector_length_scale: 2.0
   verbose: True
 mapping_manager:
