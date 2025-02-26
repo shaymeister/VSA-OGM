@@ -282,8 +282,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         
         self.ogm = ogm.cpu().numpy()
 
-        for logger in self.loggers:
-            logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
+        # for logger in self.loggers:
+        #     logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
 
         self.num_observations += 1
 

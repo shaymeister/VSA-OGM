@@ -1,19 +1,21 @@
-experiment_name: "decoding_method_evaluation_ablation_dense"
+experiment_name: "decoding_method_evaluation_ablation_sparse"
 experiment_type: "single_agent"
 experiment_parameters:
   mapping:
     axis_resolution: [0.1, 0.25, 0.5]
+    vector_dimensionality: [32768, 16384, 8192]
+    vector_length_scale: [0.1, 0.2, 0.5, 1.0]
     decoding:
-      method: ["default", "normalize", "squaring", "cubic", "normalize_squaring", "normalize_cubic", "relu", "relu_normalize", "relu_squaring", "relu_cubic", "relu_normalize_squaring", "relu_normalize_cubic", "tanh", "tanh_normalize", "tanh_squaring", "tanh_cubic", "tanh_normalize_squaring", "tanh_normalize_cubic", "sigmoid", "sigmoid_normalize", "sigmoid_squaring", "sigmoid_cubic", "sigmoid_normalize_squaring", "sigmoid_normalize_cubic", "softmax", "softmax_normalize", "softmax_squaring", "softmax_cubic", "softmax_normalize_squaring", "softmax_normalize_cubic"]
-      vector_dimensionality: [256, 512, 1024, 2048, 4096, 8192, 16384]
-      vector_length_scale: [0.1, 0.2, 0.5, 1.0, 2.0]
+      method: ["renyi", "renyi_squaring", "renyi_cubic", "renyi_normalize", "renyi_normalize_squaring", "renyi_normalize_cubic"]
+      disk_radii_1: [1, 3, 5]
+      disk_radii_2: [1, 3, 5]
 
 data:
   dataset_name: "ablation"
   data_dir: "datasets/sa/"
-  file_prefix: "ablation_dense"
+  file_prefix: "ablation_sparse"
   file_suffix: ".pkl"
-  num_chunks: 150
+  num_chunks: 20
   test_split: 0.2
   world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
 logging:
@@ -43,14 +45,14 @@ mapping_manager:
   num_mappers: 1
   plotting_flags: 
     plot_metrics: True
-    plot_point_clouds: True
-    plot_predictions: True
-    plot_images: True
+    plot_point_clouds: False
+    plot_predictions: False
+    plot_images: False
   seed: 42
   verbose: True
 wandb:
   enabled: True
   notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
   online: True
-  project_name: "decoding_method_evaluation_ablation_dense_no_entropy"
+  project_name: "decoding_method_evaluation_ablation_sparse_entropy"
   verbose: False
