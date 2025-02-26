@@ -268,7 +268,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             ogm_conversion_start = time.time()
 
         ogm = occupied_heatmap - empty_heatmap
-        ogm = ogm.T
+        # ogm = ogm.T
 
         if self.device.startswith("cuda"):
             ogm_conversion_end.record()
@@ -317,6 +317,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         X = torch.round(X)
         X = X.long()
 
+        # filter all points outside of the world bounds
         X = X[(X[:, 0] >= 0) & (X[:, 0] < self.ogm.shape[0]) & (X[:, 1] >= 0) & (X[:, 1] < self.ogm.shape[1])]
         
         predictions: np.ndarray = self.ogm[X[:, 0], X[:, 1]]
@@ -673,82 +674,17 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_heatmap = torch.pow(empty_heatmap, 3)
             occupied_heatmap = torch.sigmoid(occupied_heatmap)
             empty_heatmap = torch.sigmoid(empty_heatmap)
-        
-        # -----------------------------------------------
-        # Decoding Approach 31: Softmax
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax":
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
-
-        # -----------------------------------------------
-        # Decoding Approach 32: Softmax with squaring
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax_squaring":
-            occupied_heatmap = torch.square(occupied_heatmap)
-            empty_heatmap = torch.square(empty_heatmap)
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
-
-        # -----------------------------------------------
-        # Decoding Approach 33: Softmax with cubic
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax_cubic":
-            occupied_heatmap = torch.pow(occupied_heatmap, 3)
-            empty_heatmap = torch.pow(empty_heatmap, 3)
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
-
-        # -----------------------------------------------
-        # Decoding Approach 34: Softmax with normalization
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax_normalize":
-            occupied_heatmap /= torch.max(occupied_heatmap)
-            empty_heatmap /= torch.max(empty_heatmap)
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
-
-        # -----------------------------------------------
-        # Decoding Approach 35: Softmax with normalization
-        #   and squaring
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax_normalize_squaring":
-            occupied_heatmap /= torch.max(occupied_heatmap)
-            empty_heatmap /= torch.max(empty_heatmap)
-            occupied_heatmap = torch.square(occupied_heatmap)
-            empty_heatmap = torch.square(empty_heatmap)
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
-
-        # -----------------------------------------------
-        # Decoding Approach 36: Softmax with normalization
-        #   and cubic
-        # -----------------------------------------------
-        elif self.decoding_method == "softmax_normalize_cubic":
-            occupied_heatmap /= torch.max(occupied_heatmap)
-            empty_heatmap /= torch.max(empty_heatmap)
-            occupied_heatmap = torch.pow(occupied_heatmap, 3)
-            empty_heatmap = torch.pow(empty_heatmap, 3)
-            stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
-            stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-            occupied_heatmap = stacked_heatmap[0]
-            empty_heatmap = stacked_heatmap[1]
 
         # -----------------------------------------------
         # Unknown Decoding Method
         # -----------------------------------------------
         else:
             raise ValueError(f"Unknown decoding method: {self.decoding_method}")
+
+        stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+        stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+        occupied_heatmap = stacked_heatmap[0]
+        empty_heatmap = stacked_heatmap[1]
         
         if self.device.startswith("cuda"):
             decoding_end.record()
