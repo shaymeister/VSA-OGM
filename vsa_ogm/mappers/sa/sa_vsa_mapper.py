@@ -282,8 +282,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         
         self.ogm = ogm.cpu().numpy()
 
-        for logger in self.loggers:
-            logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
+        # for logger in self.loggers:
+        #     logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
 
         self.num_observations += 1
 
@@ -306,6 +306,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         if isinstance(X, np.ndarray):
             X = torch.tensor(X)
+        else:
+            X = torch.clone(X)
         
         X = X.to("cpu")
 
@@ -314,6 +316,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         X = X / self.axis_resolution
         X = torch.round(X)
         X = X.long()
+
+        X = X[(X[:, 0] >= 0) & (X[:, 0] < self.ogm.shape[0]) & (X[:, 1] >= 0) & (X[:, 1] < self.ogm.shape[1])]
         
         predictions: np.ndarray = self.ogm[X[:, 0], X[:, 1]]
 
