@@ -129,6 +129,8 @@ class SingleAgentMappingManager:
             train_pred = self.mapper.predict(X_train)[0]
             x_train_pred_norm = (train_pred - ogm_min) / (ogm_max - ogm_min)
             x_test_pred_norm = (y_pred - ogm_min) / (ogm_max - ogm_min)
+            x_train_pred_norm = np.nan_to_num(x_train_pred_norm)
+            x_test_pred_norm = np.nan_to_num(x_test_pred_norm)
 
             # calculate the performance metrics based on the predictions
             for metric in self.metrics:

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=vsa-ogm-exp1-no-entropy-ablation-dense-2
+#SBATCH --job-name=vsa-ogm-exp1-no-entropy-ablation-dense
 #SBATCH --qos=gpu
 #SBATCH --partition=gpuq
 #SBATCH --gres=gpu:2g.20gb:1                # up to 8; only request what you need

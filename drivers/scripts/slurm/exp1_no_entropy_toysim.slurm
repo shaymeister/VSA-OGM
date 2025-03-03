@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=vsa-ogm-exp1-no-entropy-toysim-no-plotting
+#SBATCH --job-name=vsa-ogm-exp1-no-entropy-toysim
 #SBATCH --qos=gpu
 #SBATCH --partition=gpuq
 #SBATCH --gres=gpu:A100.40gb:1
