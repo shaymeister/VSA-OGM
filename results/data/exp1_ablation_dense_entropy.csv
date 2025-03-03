@@ -1,4 +1,4 @@
-,test_nll,test_acc,seed,device,verbose,decoding_alpha,decoding_method,decoding_disk_radii_1,decoding_disk_radii_2,num_tiles,data_filter,mapping_type,axis_resolution,vector_length_scale,vector_dimensionality
+,test_nll,test_auc,seed,device,verbose,decoding_alpha,decoding_method,decoding_disk_radii_1,decoding_disk_radii_2,num_tiles,data_filter,mapping_type,axis_resolution,vector_length_scale,vector_dimensionality
 0,0.4028197943931487,0.9579629221463032,42,cuda,True,None,renyi,1,1,1,passthrough,SA_VSA_OGM,0.1,0.1,32768
 1,0.4049852256134044,0.9804085702286912,42,cuda,True,None,renyi,1,3,1,passthrough,SA_VSA_OGM,0.1,0.1,32768
 2,0.409062939463362,0.9853762442364292,42,cuda,True,None,renyi,1,5,1,passthrough,SA_VSA_OGM,0.1,0.1,32768
