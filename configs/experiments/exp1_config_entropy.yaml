@@ -1,0 +1,56 @@
+experiment_name: "decoding_method_evaluation_ablation_dense_entropy"
+experiment_type: "single_agent"
+experiment_parameters:
+  mapping:
+    axis_resolution: [0.1, 0.25, 0.5]
+    decoding:
+      method: ["default", "disk"]
+      vector_dimensionality: [256, 512, 1024, 2048, 4096, 8192, 16384]
+      vector_length_scale: [0.1, 0.2, 0.5, 1.0, 2.0]
+
+data:
+  dataset_name: "ablation"
+  data_dir: "datasets/sa/"
+  file_prefix: "ablation_dense"
+  file_suffix: ".pkl"
+  num_chunks: 150
+  test_split: 0.2
+  world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
+logging:
+  enabled: True
+  log_images: True
+  override_existing: False
+  save_dir: "logs"
+  verbose: False
+mapping:
+  axis_resolution: 0.5
+  data_filter: "passthrough"
+  data_filter_args: {}
+  decoding:
+    method: "default"
+    alpha: None
+    disk_radii_1: 3
+    disk_radii_2: 3
+  device: "cuda"
+  mapping_type: "SA_VSA_OGM"
+  num_tiles: 1
+  seed: 42
+  vector_dimensionality: 2048
+  vector_length_scale: 2.0
+  verbose: True
+mapping_manager:
+  metrics: ["auc", "nll"]
+  num_mappers: 1
+  plotting_flags: 
+    plot_metrics: True
+    plot_point_clouds: True
+    plot_predictions: True
+    plot_images: True
+  seed: 42
+  verbose: True
+wandb:
+  enabled: True
+  notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
+  online: True
+  project_name: "decoding_method_evaluation_ablation_dense_entropy"
+  verbose: False

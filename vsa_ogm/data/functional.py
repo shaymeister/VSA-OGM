@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 from vsa_ogm.logging import BaseLogger
 
-VALID_DATASETS: List[str] = ["toysim"]
+VALID_DATASETS: List[str] = ["toysim", "ablation"]
 VALID_EXPERIMENT_TYPES: List[str] = ["single_agent", "multi_agent"]
 
 def load_data(config: DictConfig, loggers: List[BaseLogger]):
@@ -36,6 +36,11 @@ def load_data(config: DictConfig, loggers: List[BaseLogger]):
     if dataset_name == "toysim" and exp_type == "single_agent":
         from vsa_ogm.data.sa.toysim_sa_dataset import ToySimSingleAgentDataset
         dataset = ToySimSingleAgentDataset(config, loggers)
+    elif dataset_name == "ablation" and exp_type == "single_agent":
+        from vsa_ogm.data.sa.ablation_sa_dataset import AblationSingleAgentDataset
+        dataset = AblationSingleAgentDataset(config, loggers)
+    else:
+        raise ValueError(f"Unknown dataset - {dataset_name} - must be in [{VALID_DATASETS}]")
 
     return dataset
 

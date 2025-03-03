@@ -1,5 +1,9 @@
+import json
 import numpy as np
 from omegaconf import DictConfig
+from skimage.filters.rank import entropy
+from skimage.morphology import disk
+import time
 import torch
 import torch.nn as nn
 from typing import List, Tuple, Union
@@ -147,6 +151,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # extract parameters from the config
         # -----------------------------------------------
         self.axis_resolution: int = config.mapping.axis_resolution
+        self.decoding_method: str = config.mapping.decoding.method
+        self.decoding_alpha: float = config.mapping.decoding.alpha
+        self.decoding_disk_radii_1: int = config.mapping.decoding.disk_radii_1
+        self.decoding_disk_radii_2: int = config.mapping.decoding.disk_radii_2
         self.device: str = config.mapping.device
         self.num_tiles: int = config.mapping.num_tiles
         self.seed: int = config.mapping.seed
@@ -222,36 +230,64 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             X = torch.tensor(X)
             y = torch.tensor(y)
         
+        # load the data to the GPUs
+        cpu2gpu_start_time: float = time.time()
         X = X.to(self.device)
-        y = y.to(self.device)
+        cpu2gpu_end_time: float = time.time()
+        fit_metrics["cpu2gpu_time"] = cpu2gpu_end_time - cpu2gpu_start_time
 
+        # split the data based on class labels
+        split_start_time: float = time.time()
         X_occupied = X[y == 1]
-        y_occupied = y[y == 1]
         X_empty = X[y == 0]
-        y_empty = y[y == 0]
-        
-        self.process_observation(X_occupied, occupied=True)
-        self.process_observation(X_empty, occupied=False)
+        split_end_time: float = time.time()
+        fit_metrics["split_time"] = split_end_time - split_start_time
+
+        if len(X_occupied) > 0:
+            occ_encoding_metrics: dict = self.encode_observation(X_occupied, occupied=True)
+            print(occ_encoding_metrics)
+            fit_metrics["occupied"] = occ_encoding_metrics
+        if len(X_empty) > 0:
+            empty_encoding_metrics: dict = self.encode_observation(X_empty, occupied=False)
+            fit_metrics["empty"] = empty_encoding_metrics
 
         occupied_heatmap = self.xy_axis_occupied_heatmap
         empty_heatmap = self.xy_axis_empty_heatmap
 
-        occupied_heatmap /= torch.max(occupied_heatmap)
-        empty_heatmap /= torch.max(empty_heatmap)
+        occupied_heatmap, empty_heatmap, decoding_metrics = self.decode_heatmaps(
+            occupied_heatmap, empty_heatmap
+        )
 
-        occupied_heatmap = torch.square(occupied_heatmap)
-        empty_heatmap = torch.square(empty_heatmap)
+        fit_metrics["decoding"] = decoding_metrics
+
+        if self.device.startswith("cuda"):
+            ogm_conversion_start = torch.cuda.Event(enable_timing=True)
+            ogm_conversion_end = torch.cuda.Event(enable_timing=True)
+            ogm_conversion_start.record()
+        else:
+            ogm_conversion_start = time.time()
 
         ogm = occupied_heatmap - empty_heatmap
-        ogm = (ogm + 1) / 2
-        ogm = ogm.T
+        # ogm = ogm.T
+
+        if self.device.startswith("cuda"):
+            ogm_conversion_end.record()
+            torch.cuda.synchronize()
+            fit_metrics["ogm_conversion"] = ogm_conversion_start.elapsed_time(
+                ogm_conversion_end
+            )
+        else:
+            ogm_conversion_end = time.time()
+            fit_metrics["ogm_conversion"] = ogm_conversion_end - ogm_conversion_start
         
         self.ogm = ogm.cpu().numpy()
 
-        for logger in self.loggers:
-            logger.log_image(self.ogm, "ogm")
-        
-        raise NotImplementedError
+        # for logger in self.loggers:
+        #     logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
+
+        self.num_observations += 1
+
+        print(json.dumps(fit_metrics, indent=4))
 
         return fit_metrics
     
@@ -270,12 +306,399 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         if isinstance(X, np.ndarray):
             X = torch.tensor(X)
+        else:
+            X = torch.clone(X)
         
-        X = X.to(self.device)
+        X = X.to("cpu")
+
+        X[:, 0] -= self.world_bounds[0]
+        X[:, 1] -= self.world_bounds[2]
+        X = X / self.axis_resolution
+        X = torch.round(X)
+        X = X.long()
+
+        # filter all points outside of the world bounds
+        X = X[(X[:, 0] >= 0) & (X[:, 0] < self.ogm.shape[0]) & (X[:, 1] >= 0) & (X[:, 1] < self.ogm.shape[1])]
+        
+        predictions: np.ndarray = self.ogm[X[:, 0], X[:, 1]]
 
         return predictions, prediction_metrics
+
+    def decode_heatmaps(self, occupied_heatmap: torch.tensor,
+            empty_heatmap: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
+        """
+        TODO Finish Documentation
+        """
+        decoding_metrics: dict = {}
+
+        if self.device.startswith("cuda"):
+            decoding_start = torch.cuda.Event(enable_timing=True)
+            decoding_end = torch.cuda.Event(enable_timing=True)
+            decoding_start.record()
+        else:
+            decoding_start = time.time()
+
+        # -----------------------------------------------
+        # Decoding Approach 1: this is the default we have
+        #   been using in all tests
+        # -----------------------------------------------
+        if self.decoding_method == "default":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 2: normalize the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 3: square the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 4: cubic the individual
+        #   heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+
+        # -----------------------------------------------
+        # Decoding Approach 5: normalize and square
+        #   the individual heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 6: normalize and cubic
+        #   the individual heatmaps
+        # -----------------------------------------------
+        elif self.decoding_method == "normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+
+        # -----------------------------------------------
+        # Decoding Approach 7: renyi entropy
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi":
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 8: renyi entropy with
+        #   squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi_squaring":
+            occupied_heatmap = torch.pow(occupied_heatmap, 2)
+            empty_heatmap = torch.pow(empty_heatmap, 2)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 9: renyi entropy with
+        #   cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 10: renyi entropy with
+        #   normalization
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 11: renyi entropy with
+        #   normalization and squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 2)
+            empty_heatmap = torch.pow(empty_heatmap, 2)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 12: renyi entropy with
+        #   normalization and cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "renyi_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
+
+        # -----------------------------------------------
+        # Decoding Approach 13: ReLU
+        # -----------------------------------------------
+        elif self.decoding_method == "relu":
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 14: ReLU with squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "relu_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 15: ReLU with cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "relu_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 16: ReLU with normalization
+        # -----------------------------------------------
+        elif self.decoding_method == "relu_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 17: ReLU with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "relu_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 18: ReLU with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "relu_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.relu(occupied_heatmap)
+            empty_heatmap = torch.relu(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 19: TanH
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh":
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 20: TanH with squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 21: TanH with cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 22: TanH with normalization
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 23: TanH with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 24: TanH with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "tanh_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.tanh(occupied_heatmap)
+            empty_heatmap = torch.tanh(empty_heatmap)
+        
+        # -----------------------------------------------
+        # Decoding Approach 25: Sigmoid
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid":
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 26: Sigmoid with squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid_squaring":
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 27: Sigmoid with cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid_cubic":
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 28: Sigmoid with normalization
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid_normalize":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 29: Sigmoid with normalization
+        #   and squaring
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid_normalize_squaring":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.square(occupied_heatmap)
+            empty_heatmap = torch.square(empty_heatmap)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Decoding Approach 30: Sigmoid with normalization
+        #   and cubic
+        # -----------------------------------------------
+        elif self.decoding_method == "sigmoid_normalize_cubic":
+            occupied_heatmap /= torch.max(occupied_heatmap)
+            empty_heatmap /= torch.max(empty_heatmap)
+            occupied_heatmap = torch.pow(occupied_heatmap, 3)
+            empty_heatmap = torch.pow(empty_heatmap, 3)
+            occupied_heatmap = torch.sigmoid(occupied_heatmap)
+            empty_heatmap = torch.sigmoid(empty_heatmap)
+
+        # -----------------------------------------------
+        # Unknown Decoding Method
+        # -----------------------------------------------
+        else:
+            raise ValueError(f"Unknown decoding method: {self.decoding_method}")
+
+        stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
+        stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
+        occupied_heatmap = stacked_heatmap[0]
+        empty_heatmap = stacked_heatmap[1]
+        
+        if self.device.startswith("cuda"):
+            decoding_end.record()
+            torch.cuda.synchronize()
+            decoding_metrics["decoding_time"] = decoding_start.elapsed_time(
+                decoding_end
+            )
+        else:
+            decoding_end = time.time()
+            decoding_metrics["decoding_time"] = decoding_end - decoding_start
+        
+        return occupied_heatmap, empty_heatmap, decoding_metrics
     
-    def process_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
+    def encode_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
             occupied: bool = True) -> None:
         """
         Processes an observation represented as a point cloud and the
@@ -289,8 +712,27 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             None
         """
 
+        encode_metrics: dict = {}
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            world_bound_norm_start = torch.cuda.Event(enable_timing=True)
+            world_bound_norm_end = torch.cuda.Event(enable_timing=True)
+            world_bound_norm_start.record()
+        else:
+            world_bound_norm_start = time.time()
+
+        # Computations
         point_cloud[:, 0] -= self.world_bounds[0]
         point_cloud[:, 1] -= self.world_bounds[2]
+        
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            world_bound_norm_end.record()
+        else:
+            world_bound_norm_end = time.time()
+            encode_metrics["world_bound_norm"] = (world_bound_norm_end \
+                - world_bound_norm_start) / 1000
 
         ups = point_cloud
 
@@ -298,39 +740,179 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # Calculate quadrant memories for each new point
         # using a multipoint L2 distance calculation
         # -----------------------------------------------
-        # dist_time = time.time()
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            tile_memory_calculation_start = torch.cuda.Event(enable_timing=True)
+            tile_memory_calculation_end = torch.cuda.Event(enable_timing=True)
+            tile_memory_calculation_start.record()
+        else:
+            tile_memory_calculation_start = time.time()
+
+        # Computation
         ups: torch.tensor = ups.unsqueeze(1)
         qcm: torch.tensor = self.quadrant_centers[0]
         qcm: torch.tensor = qcm.unsqueeze(0)
         qcm: torch.tensor = qcm.repeat(ups.shape[0], 1, 1)
         dists: torch.tensor = self.pdist(ups, qcm)
         closest_quads: torch.tensor = torch.argmin(dists, dim=1)
-    
         ups = ups.squeeze(1)
+
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            tile_memory_calculation_end.record()
+        else:
+            tile_memory_calculation_end = time.time()
+            encode_metrics["tile_memory_calculation"] = tile_memory_calculation_end \
+                - tile_memory_calculation_start
 
         # ---------------------------
         # Matrix Encoding Approach
         # ---------------------------
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            axis_fd_matrix_start = torch.cuda.Event(enable_timing=True)
+            axis_fd_matrix_end = torch.cuda.Event(enable_timing=True)
+            axis_fd_matrix_start.record()
+        else:
+            axis_fd_matrix_start: float = time.time()
+
+        # Computation
         x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
         y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            axis_fd_matrix_end.record()
+        else:
+            axis_fd_matrix_end = time.time()
+            encode_metrics["axis_fd_matrix"] = axis_fd_matrix_end - axis_fd_matrix_start
+
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            powers_start = torch.cuda.Event(enable_timing=True)
+            powers_end = torch.cuda.Event(enable_timing=True)
+            powers_start.record()
+        else:
+            powers_start = time.time()
+
+        # Computation
         x_powers = (ups[:, 0] / self.vector_length_scale)
         y_powers = (ups[:, 1] / self.vector_length_scale)
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            powers_end.record()
+        else:
+            powers_end = time.time()
+            encode_metrics["powers"] = powers_end - powers_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            power_matrix_start = torch.cuda.Event(enable_timing=True)
+            power_matrix_end = torch.cuda.Event(enable_timing=True)
+            power_matrix_start.record()
+        else:
+            power_matrix_start = time.time()
+
+        # Computation
         x_power_matrix = x_powers.repeat(self.vector_dimensionality, 1).T
         y_power_matrix = y_powers.repeat(self.vector_dimensionality, 1).T
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            power_matrix_end.record()
+        else:
+            power_matrix_end = time.time()
+            encode_metrics["power_matrix"] = power_matrix_end - power_matrix_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            axis_fd_power_matrix_start = torch.cuda.Event(enable_timing=True)
+            axis_fd_power_matrix_end = torch.cuda.Event(enable_timing=True)
+            axis_fd_power_matrix_start.record()
+        else:
+            axis_fd_power_matrix_start = time.time()
+
+        # Computation
         x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
         y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            axis_fd_power_matrix_end.record()
+        else:
+            axis_fd_power_matrix_end = time.time()
+            encode_metrics["axis_fd_power_matrix"] = axis_fd_power_matrix_end \
+                - axis_fd_power_matrix_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            axis_fd_power_unsqueeze_start = torch.cuda.Event(enable_timing=True)
+            axis_fd_power_unsqueeze_end = torch.cuda.Event(enable_timing=True)
+            axis_fd_power_unsqueeze_start.record()
+        else:
+            axis_fd_power_unsqueeze_start = time.time()
+
+        # Computation
         x_axis_fd_matrix = x_axis_fd_matrix.unsqueeze(0)
         y_axis_fd_matrix = y_axis_fd_matrix.unsqueeze(0)
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            axis_fd_power_unsqueeze_end.record()
+        else:
+            axis_fd_power_unsqueeze_end = time.time()
+            encode_metrics["axis_fd_power_unsqueeze"] = axis_fd_power_unsqueeze_end \
+                - axis_fd_power_unsqueeze_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            xy_axis_fd_matrix_start = torch.cuda.Event(enable_timing=True)
+            xy_axis_fd_matrix_end = torch.cuda.Event(enable_timing=True)
+            xy_axis_fd_matrix_start.record()
+        else:
+            xy_axis_fd_matrix_start = time.time()
+        
+        # Computation
         xy_axis_fd_matrix = torch.concatenate((x_axis_fd_matrix, y_axis_fd_matrix), dim=0)
         xy_axis_fd_matrix = torch.prod(xy_axis_fd_matrix, dim=0)
+
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            xy_axis_fd_matrix_end.record()
+        else:
+            xy_axis_fd_matrix_end = time.time()
+            encode_metrics["xy_axis_fd_matrix"] = xy_axis_fd_matrix_end - xy_axis_fd_matrix_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            xy_axis_ifft_start = torch.cuda.Event(enable_timing=True)
+            xy_axis_ifft_end = torch.cuda.Event(enable_timing=True)
+            xy_axis_ifft_start.record()
+        else:
+            xy_axis_ifft_start = time.time()
+
+        # Computation
         xy_axis_fd_matrix = torch.fft.ifft(xy_axis_fd_matrix, dim=1)
         xy_axis_fd_matrix = xy_axis_fd_matrix.real
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            xy_axis_ifft_end.record()
+        else:
+            xy_axis_ifft_end = time.time()
+            encode_metrics["xy_axis_ifft"] = xy_axis_ifft_end - xy_axis_ifft_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            index_add_start = torch.cuda.Event(enable_timing=True)
+            index_add_end = torch.cuda.Event(enable_timing=True)
+            index_add_start.record()
+        else:
+            index_add_start = time.time()
+
+        # Computation
         if occupied:
             self.occupied_quadrant_memory_vectors.index_add_(
                 0,
@@ -344,6 +926,21 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
                 xy_axis_fd_matrix.float()
             )
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            index_add_end.record()
+        else:
+            index_add_end = time.time()
+            encode_metrics["index_add"] = index_add_end - index_add_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            qv_norm_start = torch.cuda.Event(enable_timing=True)
+            qv_norm_end = torch.cuda.Event(enable_timing=True)
+            qv_norm_start.record()
+        else:
+            qv_norm_start = time.time()
+
         if occupied:
             norm_qv = self.occupied_quadrant_memory_vectors / torch.norm(
                 self.occupied_quadrant_memory_vectors, dim=1, keepdim=True
@@ -353,13 +950,52 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
                 self.empty_quadrant_memory_vectors, dim=1, keepdim=True
             )
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            qv_norm_end.record()
+        else:
+            qv_norm_end = time.time()
+            encode_metrics["qv_norm"] = qv_norm_end - qv_norm_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            hm_clone_start = torch.cuda.Event(enable_timing=True)
+            hm_clone_end = torch.cuda.Event(enable_timing=True)
+            hm_clone_start.record()
+        else:
+            hm_clone_start = time.time()
+
         if occupied:
             temp_xy_axis_heatmap = torch.clone(self.xy_axis_occupied_heatmap)
         else:
             temp_xy_axis_heatmap = torch.clone(self.xy_axis_empty_heatmap)
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            hm_clone_end.record()
+        else:
+            hm_clone_end = time.time()
+            encode_metrics["hm_clone"] = hm_clone_end - hm_clone_start
+
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            dot_product_start = torch.cuda.Event(enable_timing=True)
+            dot_product_end = torch.cuda.Event(enable_timing=True)
+            dot_product_start.record()
+        else:
+            dot_product_start = time.time()
+
         result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
 
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            dot_product_end.record()
+        else:
+            dot_product_end = time.time()
+            encode_metrics["dot_product"] = dot_product_end - dot_product_start
+
+        # This is only computed once so it is not included in the timing
+        # calculations
         if self.boolean_results_mask is None:
             self.boolean_results_mask = torch.zeros_like(result).bool()
             counter = 0
@@ -372,6 +1008,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
                         self.boolean_results_mask[counter, x_lower:x_upper, y_lower:y_upper] = True
                         counter += 1
 
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            hm_decoding_start = torch.cuda.Event(enable_timing=True)
+            hm_decoding_end = torch.cuda.Event(enable_timing=True)
+            hm_decoding_start.record()
+        else:
+            hm_decoding_start = time.time()
+
         result[~self.boolean_results_mask] = 0
         temp_xy_axis_heatmap = result.sum(dim=0)
 
@@ -379,7 +1023,63 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         if occupied:
             self.xy_axis_occupied_heatmap = temp_xy_axis_heatmap
         else:
-            self.xy_axis_empty_heatmap = temp_xy_axis_heatmap    
+            self.xy_axis_empty_heatmap = temp_xy_axis_heatmap 
+
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            hm_decoding_end.record()
+        else:
+            hm_decoding_end = time.time()
+            encode_metrics["hm_decoding"] = hm_decoding_end - hm_decoding_start
+
+        if self.device.startswith("cuda"):
+            torch.cuda.synchronize()
+
+            encode_metrics["world_bound_norm"] = world_bound_norm_start.elapsed_time(
+                world_bound_norm_end
+            )
+            encode_metrics["tile_memory_calculation"] = tile_memory_calculation_start.elapsed_time(
+                tile_memory_calculation_end
+            )
+            encode_metrics["axis_fd_matrix"] = axis_fd_matrix_start.elapsed_time(
+                axis_fd_matrix_end
+            )
+            encode_metrics["powers"] = powers_start.elapsed_time(
+                powers_end
+            )
+            encode_metrics["power_matrix"] = power_matrix_start.elapsed_time(
+                power_matrix_end
+            )
+            encode_metrics["axis_fd_power_matrix"] = axis_fd_power_matrix_start.elapsed_time(
+                axis_fd_power_matrix_end
+            )
+            encode_metrics["axis_fd_power_unsqueeze"] = axis_fd_power_unsqueeze_start.elapsed_time(
+                axis_fd_power_unsqueeze_end
+            )
+            encode_metrics["xy_axis_fd_matrix"] = xy_axis_fd_matrix_start.elapsed_time(
+                xy_axis_fd_matrix_end
+            )
+            encode_metrics["xy_axis_ifft"] = xy_axis_ifft_start.elapsed_time(
+                xy_axis_ifft_end
+            )
+            encode_metrics["index_add"] = index_add_start.elapsed_time(
+                index_add_end
+            )
+            encode_metrics["qv_norm"] = qv_norm_start.elapsed_time(
+                qv_norm_end
+            )
+            encode_metrics["hm_clone"] = hm_clone_start.elapsed_time(
+                hm_clone_end
+            )
+            encode_metrics["dot_product"] = dot_product_start.elapsed_time(
+                dot_product_end
+            )
+            encode_metrics["hm_decoding"] = hm_decoding_start.elapsed_time(
+                hm_decoding_end
+            )
+
+        return encode_metrics
+
 
     def query_point_thetas(self, points: Union[np.ndarray, torch.tensor],
                 return_as_numpy: bool = True) -> torch.tensor:

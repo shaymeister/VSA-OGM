@@ -1,14 +1,16 @@
 experiment_name: "baseline_mapping_tester"
 experiment_type: "single_agent"
 data:
-  dataset_name: "toysim"
-  data_dir: "datasets/sa/toysim0/npz"
-  file_prefix: "results_frame_"
-  file_suffix: ".npz"
+  dataset_name: "ablation"
+  data_dir: "datasets/sa/"
+  file_prefix: "ablation_dense"
+  file_suffix: ".pkl"
+  num_chunks: 150
   test_split: 0.2
-  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
+  world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
 logging:
   enabled: True
+  log_images: True
   override_existing: False
   save_dir: "logs"
   verbose: False
@@ -16,19 +18,26 @@ mapping:
   axis_resolution: 0.5
   data_filter: "passthrough"
   data_filter_args: {}
-  device: "cpu"
+  decoding:
+    method: "default"
+    alpha: None
+    disk_radii_1: 3
+    disk_radii_2: 3
+  device: "cuda"
   mapping_type: "SA_VSA_OGM"
   num_tiles: 1
   seed: 42
-  vector_dimensionality: 512
-  vector_length_scale: 1.0
+  vector_dimensionality: 2048
+  vector_length_scale: 2.0
   verbose: True
 mapping_manager:
-  metrics: ["auc", "f1", "precision", "recall", "accuracy", "nll"]
+  metrics: ["auc", "nll"]
   num_mappers: 1
   plotting_flags: 
     plot_metrics: True
-    plot_points_clouds: True
+    plot_point_clouds: True
+    plot_predictions: True
+    plot_images: True
   seed: 42
   verbose: True
 wandb:

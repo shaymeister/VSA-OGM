@@ -1,5 +1,6 @@
 import numpy as np
 from omegaconf import DictConfig
+from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from typing import List
 
@@ -94,6 +95,16 @@ class SingleAgentMappingManager:
                 stratify=y
             )
 
+            if self.plotting_flags.plot_point_clouds:
+                for logger in self.loggers:
+                    logger.log_point_cloud(
+                        X_train,
+                        X_test,
+                        y_train,
+                        y_test,
+                        title=f"Dataset_Step_{idx}",
+                        epoch=idx)
+
             # store the training and testing data
             self.all_X_train.append(X_train)
             self.all_y_train.append(y_train)
@@ -105,10 +116,53 @@ class SingleAgentMappingManager:
             complete_metric_dict.update(fit_metrics)
 
             # predict the testing data
-            y_pred, pred_metrics = self.mapper.predict(X_test)
+            all_y_test_np = np.concatenate(self.all_y_test)
+            all_X_test_np = np.vstack(self.all_X_test)
+
+
+            y_pred, pred_metrics = self.mapper.predict(all_X_test_np)
             complete_metric_dict.update(pred_metrics)
 
-            
+            # normalize the predictions based on the range of the OGM
+            ogm_min = np.min(self.mapper.ogm)
+            ogm_max = np.max(self.mapper.ogm)
+            train_pred = self.mapper.predict(X_train)[0]
+            x_train_pred_norm = (train_pred - ogm_min) / (ogm_max - ogm_min)
+            x_test_pred_norm = (y_pred - ogm_min) / (ogm_max - ogm_min)
+            x_train_pred_norm = np.nan_to_num(x_train_pred_norm)
+            x_test_pred_norm = np.nan_to_num(x_test_pred_norm)
+
+            # calculate the performance metrics based on the predictions
+            for metric in self.metrics:
+                if metric == "auc":
+                    train_fpr, train_tpr, _ = metrics.roc_curve(y_train, x_train_pred_norm)
+                    test_fpr, test_tpr, _ = metrics.roc_curve(all_y_test_np, x_test_pred_norm)
+                    train_auc = metrics.auc(train_fpr, train_tpr)
+                    test_auc = metrics.auc(test_fpr, test_tpr)
+                    complete_metric_dict["train_auc"] = train_auc
+                    complete_metric_dict["test_auc"] = test_auc
+
+                elif metric == "nll":
+                    train_nll = metrics.log_loss(y_train, x_train_pred_norm, labels=[0, 1])
+                    test_nll = metrics.log_loss(all_y_test_np, x_test_pred_norm, labels=[0, 1])
+                    complete_metric_dict["train_nll"] = train_nll
+                    complete_metric_dict["test_nll"] = test_nll
+                else:
+                    raise NotImplementedError(f"Metric {metric} not implemented.")
+
+            if self.plotting_flags.plot_point_clouds:
+                for logger in self.loggers:
+                    logger.log_point_cloud(
+                        X_train,
+                        X_test,
+                        y_train,
+                        y_test,
+                        title=f"TestingPredictions_{idx}",
+                        epoch=idx)
+
+            # log the metrics
+            for logger in self.loggers:
+                logger.log_metrics(complete_metric_dict, idx)
 
     def _initialize_mapper(self) -> None:
         """

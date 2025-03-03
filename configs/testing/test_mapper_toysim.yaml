@@ -1,0 +1,47 @@
+experiment_name: "baseline_mapping_tester"
+experiment_type: "single_agent"
+data:
+  dataset_name: "toysim"
+  data_dir: "datasets/sa/toysim0/npz"
+  file_prefix: "results_frame_"
+  file_suffix: ".npz"
+  test_split: 0.2
+  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
+logging:
+  enabled: True
+  log_images: True
+  override_existing: False
+  save_dir: "logs"
+  verbose: False
+mapping:
+  axis_resolution: 1.0
+  data_filter: "passthrough"
+  data_filter_args: {}
+  decoding:
+    method: "renyi_normalize_squaring"
+    alpha: None
+    disk_radii_1: 3
+    disk_radii_2: 5
+  device: "cuda"
+  mapping_type: "SA_VSA_OGM"
+  num_tiles: 2
+  seed: 42
+  vector_dimensionality: 32000
+  vector_length_scale: 2.0
+  verbose: True
+mapping_manager:
+  metrics: ["auc", "nll"]
+  num_mappers: 1
+  plotting_flags: 
+    plot_metrics: True
+    plot_point_clouds: True
+    plot_predictions: True
+    plot_images: True
+  seed: 42
+  verbose: True
+wandb:
+  enabled: False
+  notes: "<TODO - Add notes here>"
+  online: True
+  project_name: "baseline_mapping_tester"
+  verbose: False
