@@ -1,4 +1,5 @@
 **/vsa_ogm.egg-info/
 **/logs/
 **/*.pyc
+**/*.DS_Store
 wandb/
