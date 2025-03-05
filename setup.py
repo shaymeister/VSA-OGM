@@ -20,6 +20,7 @@ setup(
         "pyyaml",
         "scikit-learn",
         "scikit-image",
+        "seaborn",
         "tabulate",
         "tqdm",
         "wandb",
