@@ -11,6 +11,7 @@ setup(
     name="vsa_ogm",
     version="0.0.1",
     install_requires=[
+        "ipykernel",
         "matplotlib",
         "numpy",
         "omegaconf",
