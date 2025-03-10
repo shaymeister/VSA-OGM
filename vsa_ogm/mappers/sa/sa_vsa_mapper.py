@@ -788,6 +788,28 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             encode_metrics["tile_memory_calculation"] = tile_memory_calculation_end \
                 - tile_memory_calculation_start
 
+        # -----------------------------------------------
+        # normalize all points to the dimensions of a single quadrant
+        # -----------------------------------------------
+        # Timing (Start)
+        if self.device.startswith("cuda"):
+            quadrant_norm_start = torch.cuda.Event(enable_timing=True)
+            quadrant_norm_end = torch.cuda.Event(enable_timing=True)
+            quadrant_norm_start.record()
+        else:
+            quadrant_norm_start = time.time()
+
+        # Computation
+        ups[:, 0] = ups[:, 0] % self.quadrant_indices_x[1]
+        ups[:, 1] = ups[:, 1] % self.quadrant_indices_y[1]
+
+        # Timing (End)
+        if self.device.startswith("cuda"):
+            quadrant_norm_end.record()
+        else:
+            quadrant_norm_end = time.time()
+            encode_metrics["quadrant_norm"] = quadrant_norm_end - quadrant_norm_start
+
         # ---------------------------
         # Matrix Encoding Approach
         # ---------------------------
@@ -1017,20 +1039,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             dot_product_end = time.time()
             encode_metrics["dot_product"] = dot_product_end - dot_product_start
 
-        # This is only computed once so it is not included in the timing
-        # calculations
-        if self.boolean_results_mask is None:
-            self.boolean_results_mask = torch.zeros_like(result).bool()
-            counter = 0
-            for j, y_lower in enumerate(self.quadrant_indices_y[:-1]):
-                    for i, x_lower in enumerate(self.quadrant_indices_x[:-1]):
-                        # if counter in closest_quads:
-                        x_upper = self.quadrant_indices_x[i + 1]
-                        y_upper = self.quadrant_indices_y[j + 1]
-
-                        self.boolean_results_mask[counter, x_lower:x_upper, y_lower:y_upper] = True
-                        counter += 1
-
         # Timing (Start)
         if self.device.startswith("cuda"):
             hm_decoding_start = torch.cuda.Event(enable_timing=True)
@@ -1039,8 +1047,16 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             hm_decoding_start = time.time()
 
-        result[~self.boolean_results_mask] = 0
-        temp_xy_axis_heatmap = result.sum(dim=0)
+        num_tiles = int(self.quadrant_centers[0].shape[0] / 2)
+
+        if num_tiles > 1:
+            result = result.view(num_tiles, num_tiles, self.quadrant_indices_y[1], self.quadrant_indices_x[1])
+            result = result.permute(1, 2, 0, 3)
+            result = result.reshape(num_tiles * self.quadrant_indices_y[1], num_tiles * self.quadrant_indices_x[1])
+        else:
+            result = result.squeeze(0)
+
+        temp_xy_axis_heatmap = result
 
         temp_xy_axis_heatmap = torch.nan_to_num(temp_xy_axis_heatmap)
         if occupied:
@@ -1057,6 +1073,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         if self.device.startswith("cuda"):
             torch.cuda.synchronize()
+
+            encode_metrics["quadrant_norm"] = quadrant_norm_start.elapsed_time(
+                quadrant_norm_end
+            )
 
             encode_metrics["world_bound_norm"] = world_bound_norm_start.elapsed_time(
                 world_bound_norm_end
@@ -1447,8 +1467,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         if self.verbose:
             print("Building XY axis matrix...")
 
-        x_shape: tuple = self.xy_axis_linspace[0].shape[0]
-        y_shape: tuple = self.xy_axis_linspace[1].shape[0]
+        x_shape: tuple = self.quadrant_indices_x[1]
+        y_shape: tuple = self.quadrant_indices_y[1]
 
         self.xy_axis_matrix = torch.zeros(
             (x_shape, y_shape, self.vector_dimensionality),
@@ -1458,11 +1478,16 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(x_shape, 1)
         y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(y_shape, 1)
 
-        x_powers = (self.xy_axis_linspace[0] / self.vector_length_scale)
-        y_powers = (self.xy_axis_linspace[1] / self.vector_length_scale)
+        x_powers = (self.xy_axis_linspace[0][:x_shape] / self.vector_length_scale)
+        y_powers = (self.xy_axis_linspace[1][:y_shape] / self.vector_length_scale)
 
         x_power_matrix = x_powers.repeat(self.vector_dimensionality, 1).T
         y_power_matrix = y_powers.repeat(self.vector_dimensionality, 1).T
+
+        print(x_axis_fd_matrix.shape)
+        print(y_axis_fd_matrix.shape)
+        print(x_power_matrix.shape)
+        print(y_power_matrix.shape)
 
         x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
         y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
