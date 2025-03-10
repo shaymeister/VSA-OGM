@@ -12,7 +12,7 @@ data:
   data_dir: "datasets/sa/"
   file_prefix: "ablation_sparse"
   file_suffix: ".pkl"
-  num_chunks: 150
+  num_chunks: 20
   test_split: 0.2
   world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
 logging:
