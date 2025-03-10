@@ -1,4 +1,4 @@
-experiment_name: "exp3_sa_toymap_bhm_cuda_general"
+experiment_name: "exp3_sa_toymap_bhm_diag_cuda_general"
 experiment_type: "single_agent"
 
 data:
@@ -16,19 +16,10 @@ logging:
   verbose: False
 mapping:
   axis_resolution: 1.0
-  data_filter: "passthrough"
-  data_filter_args: {}
-  decoding:
-    method: "renyi_normalize_cubic"
-    alpha: None
-    disk_radii_1: 3
-    disk_radii_2: 3
   device: "cuda"
-  mapping_type: "SA_VSA_OGM"
-  num_tiles: 1
+  gamma: 6.71
+  mapping_type: "SA_BHM_DIAG"
   seed: 42
-  vector_dimensionality: 32768
-  vector_length_scale: 1.0
   verbose: True
 mapping_manager:
   metrics: ["auc", "nll"]
@@ -49,5 +40,5 @@ wandb:
   enabled: False
   notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
   online: True
-  project_name: "VSA-OGM Exp3 BHM Cuda General"
+  project_name: "VSA-OGM Exp3 BHM Diag Cuda General"
   verbose: False

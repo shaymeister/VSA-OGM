@@ -170,10 +170,11 @@ class SingleAgentMappingManager:
                         for logger in self.loggers:
                             logger.log_image(value, caption=key, epoch=idx)
 
-            if self.saving_flags.save_memory_vectors:
-                for logger in self.loggers:
-                    logger.log_matrix(self.mapper.occupied_quadrant_memory_vectors.cpu().numpy(), caption="occupied_tile_memories", epoch=idx)
-                    logger.log_matrix(self.mapper.empty_quadrant_memory_vectors.cpu().numpy(), caption="empty_tile_memories", epoch=idx)
+            if hasattr(self.mapper, "occupied_quadrant_memory_vectors") and hasattr(self.mapper, "empty_quadrant_memory_vectors"):
+                if self.saving_flags.save_memory_vectors:
+                    for logger in self.loggers:
+                        logger.log_matrix(self.mapper.occupied_quadrant_memory_vectors.cpu().numpy(), caption="occupied_tile_memories", epoch=idx)
+                        logger.log_matrix(self.mapper.empty_quadrant_memory_vectors.cpu().numpy(), caption="empty_tile_memories", epoch=idx)
 
 
             if self.saving_flags.save_image_matrices:
@@ -197,6 +198,9 @@ class SingleAgentMappingManager:
         if mapper_type == "SA_VSA_OGM":
             from vsa_ogm.mappers.sa.sa_vsa_mapper import SA_VSA_OGM
             self.mapper = SA_VSA_OGM(self.config, self.loggers)
+        elif mapper_type == "SA_BHM_DIAG":
+            from vsa_ogm.mappers.sa.sa_bhm_diag_mapper import SA_BHM_DIAG
+            self.mapper = SA_BHM_DIAG(self.config, self.loggers)
         else:
             raise ValueError(f"Invalid mapper type: {mapper_type}.")
 
