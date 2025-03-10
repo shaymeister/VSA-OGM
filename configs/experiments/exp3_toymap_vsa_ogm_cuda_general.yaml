@@ -1,0 +1,53 @@
+experiment_name: "exp3_sa_toymap_vsa_ogm_cuda_general"
+experiment_type: "single_agent"
+
+data:
+  dataset_name: "toysim"
+  data_dir: "datasets/sa/toysim0/npz"
+  file_prefix: "results_frame_"
+  file_suffix: ".npz"
+  test_split: 0.2
+  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
+logging:
+  enabled: True
+  log_images: True
+  override_existing: False
+  save_dir: "logs"
+  verbose: False
+mapping:
+  axis_resolution: 1.0
+  data_filter: "passthrough"
+  data_filter_args: {}
+  decoding:
+    method: "renyi_normalize_cubic"
+    alpha: None
+    disk_radii_1: 3
+    disk_radii_2: 3
+  device: "cuda"
+  mapping_type: "SA_VSA_OGM"
+  num_tiles: 1
+  seed: 42
+  vector_dimensionality: 32768
+  vector_length_scale: 1.0
+  verbose: True
+mapping_manager:
+  metrics: ["auc", "nll"]
+  num_mappers: 1
+  plotting_flags: 
+    plot_metrics: True
+    plot_point_clouds: False
+    plot_predictions: False
+    plot_intermediate_representations: True
+    plot_images: True
+  saving_flags:
+    save_memory_vectors: True
+    save_image_matrices: True
+
+  seed: 42
+  verbose: True
+wandb:
+  enabled: False
+  notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
+  online: True
+  project_name: "VSA-OGM Exp3 Toy Sim VSA OGM Cuda General"
+  verbose: False
