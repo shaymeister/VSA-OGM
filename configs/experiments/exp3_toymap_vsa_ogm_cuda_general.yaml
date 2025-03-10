@@ -25,10 +25,10 @@ mapping:
     disk_radii_2: 3
   device: "cuda"
   mapping_type: "SA_VSA_OGM"
-  num_tiles: 1
+  num_tiles: 2
   seed: 42
   vector_dimensionality: 32768
-  vector_length_scale: 1.0
+  vector_length_scale: 0.5
   verbose: True
 mapping_manager:
   metrics: ["auc", "nll"]
