@@ -23,7 +23,7 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
     sigma_: list = [0]
 
     def __init__(self, config: DictConfig, loggers: List[BaseLogger],
-                 print_header: str = ("(SA VSA-OGM")) -> None:
+                 print_header: str = ("(SA BHM DIAG")) -> None:
         """
         Initialize the VSA_OGM object.
 
