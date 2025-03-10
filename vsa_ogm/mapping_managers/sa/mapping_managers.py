@@ -160,31 +160,32 @@ class SingleAgentMappingManager:
                         y_test,
                         title=f"TestingPredictions_{idx}",
                         epoch=idx)
-                    
-            if self.plotting_flags.plot_images:
-                for logger in self.loggers:
-                    logger.log_image(self.mapper.ogm, caption="OGM", epoch=idx)
 
-                for key, value in intermediate_maps.items():
-                    if value is not None:
-                        for logger in self.loggers:
-                            logger.log_image(value, caption=key, epoch=idx)
-
-            if hasattr(self.mapper, "occupied_quadrant_memory_vectors") and hasattr(self.mapper, "empty_quadrant_memory_vectors"):
-                if self.saving_flags.save_memory_vectors:
+            if idx % self.config.logging.log_interval == 0 or idx == dataset_length - 1:
+                if self.plotting_flags.plot_images:
                     for logger in self.loggers:
-                        logger.log_matrix(self.mapper.occupied_quadrant_memory_vectors.cpu().numpy(), caption="occupied_tile_memories", epoch=idx)
-                        logger.log_matrix(self.mapper.empty_quadrant_memory_vectors.cpu().numpy(), caption="empty_tile_memories", epoch=idx)
+                        logger.log_image(self.mapper.ogm, caption="OGM", epoch=idx)
 
+                    for key, value in intermediate_maps.items():
+                        if value is not None:
+                            for logger in self.loggers:
+                                logger.log_image(value, caption=key, epoch=idx)
 
-            if self.saving_flags.save_image_matrices:
-                for logger in self.loggers:
-                    logger.log_matrix(self.mapper.ogm, caption="OGM", epoch=idx)
-
-                for key, value in intermediate_maps.items():
-                    if value is not None:
+                if hasattr(self.mapper, "occupied_quadrant_memory_vectors") and hasattr(self.mapper, "empty_quadrant_memory_vectors"):
+                    if self.saving_flags.save_memory_vectors:
                         for logger in self.loggers:
-                            logger.log_matrix(value, caption=key, epoch=idx)
+                            logger.log_matrix(self.mapper.occupied_quadrant_memory_vectors.cpu().numpy(), caption="occupied_tile_memories", epoch=idx)
+                            logger.log_matrix(self.mapper.empty_quadrant_memory_vectors.cpu().numpy(), caption="empty_tile_memories", epoch=idx)
+
+
+                if self.saving_flags.save_image_matrices:
+                    for logger in self.loggers:
+                        logger.log_matrix(self.mapper.ogm, caption="OGM", epoch=idx)
+
+                    for key, value in intermediate_maps.items():
+                        if value is not None:
+                            for logger in self.loggers:
+                                logger.log_matrix(value, caption=key, epoch=idx)
 
             # log the metrics
             for logger in self.loggers:

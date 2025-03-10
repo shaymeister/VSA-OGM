@@ -800,8 +800,9 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             quadrant_norm_start = time.time()
 
         # Computation
-        ups[:, 0] = ups[:, 0] % self.quadrant_indices_x[1]
-        ups[:, 1] = ups[:, 1] % self.quadrant_indices_y[1]
+        print(self.quadrant_axis_bounds)
+        ups[:, 0] = ups[:, 0] % self.quadrant_axis_bounds[0][0][1]
+        ups[:, 1] = ups[:, 1] % self.quadrant_axis_bounds[0][1][1]
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -1047,7 +1048,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             hm_decoding_start = time.time()
 
-        num_tiles = int(self.quadrant_centers[0].shape[0] / 2)
+        num_tiles = int(self.quadrant_centers[0].shape[0] ** (1/2))
 
         if num_tiles > 1:
             result = result.view(num_tiles, num_tiles, self.quadrant_indices_y[1], self.quadrant_indices_x[1])

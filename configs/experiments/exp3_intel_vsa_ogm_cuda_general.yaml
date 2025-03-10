@@ -12,20 +12,21 @@ logging:
   override_existing: False
   save_dir: "logs"
   verbose: False
+  log_interval: 25
 mapping:
-  axis_resolution: 1.0
+  axis_resolution: 0.2
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:
     method: "renyi_normalize_cubic"
     alpha: None
-    disk_radii_1: 3
-    disk_radii_2: 3
+    disk_radii_1: 1
+    disk_radii_2: 1
   device: "cuda"
   mapping_type: "SA_VSA_OGM"
-  num_tiles: 2
+  num_tiles: 4
   seed: 42
-  vector_dimensionality: 32768
+  vector_dimensionality: 16000
   vector_length_scale: 0.2
   verbose: True
 mapping_manager:
