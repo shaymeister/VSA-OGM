@@ -11,6 +11,14 @@ from typing import List, Tuple, Union
 from .base_sa_mapper import BaseSingleAgentMapper
 from ...logging import BaseLogger
 
+def sum_nested_dict(d):
+    total = 0
+    for value in d.values():
+        if isinstance(value, dict):  # If value is a nested dictionary, recurse
+            total += sum_nested_dict(value)
+        else:  # Otherwise, add the numeric value
+            total += value
+    return total
 
 def make_good_unitary(num_dims: int, device: str,
         eps: float = 1e-3) -> torch.tensor:
@@ -245,7 +253,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         if len(X_occupied) > 0:
             occ_encoding_metrics: dict = self.encode_observation(X_occupied, occupied=True)
-            print(occ_encoding_metrics)
             fit_metrics["occupied"] = occ_encoding_metrics
         if len(X_empty) > 0:
             empty_encoding_metrics: dict = self.encode_observation(X_empty, occupied=False)
@@ -254,7 +261,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         occupied_heatmap = self.xy_axis_occupied_heatmap
         empty_heatmap = self.xy_axis_empty_heatmap
 
-        occupied_heatmap, empty_heatmap, decoding_metrics = self.decode_heatmaps(
+        occupied_heatmap, empty_heatmap, decoding_metrics, intermediate_maps = self.decode_heatmaps(
             occupied_heatmap, empty_heatmap
         )
 
@@ -280,16 +287,16 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             ogm_conversion_end = time.time()
             fit_metrics["ogm_conversion"] = ogm_conversion_end - ogm_conversion_start
         
+        total_time = sum_nested_dict(fit_metrics)
+        if not self.device.startswith("cuda"):
+            # python time module returns time in seconds so convert to milliseconds
+            total_time /= 1000
+        fit_metrics["total_time"] = total_time
+
         self.ogm = ogm.cpu().numpy()
-
-        # for logger in self.loggers:
-        #     logger.log_image(self.ogm, "ogm", epoch=self.num_observations)
-
         self.num_observations += 1
 
-        print(json.dumps(fit_metrics, indent=4))
-
-        return fit_metrics
+        return fit_metrics, intermediate_maps
     
     def predict(self, X: List[np.ndarray]) -> List[np.ndarray]:
         """
@@ -330,6 +337,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         TODO Finish Documentation
         """
         decoding_metrics: dict = {}
+        intermediate_maps: dict = {
+            "occupied": occupied_heatmap.cpu().numpy(),
+            "empty": empty_heatmap.cpu().numpy(),
+            "occupied_entropy": None,
+            "empty_entropy": None,
+            "occupied_entropy_prob": None,
+            "empty_entropy_prob": None
+        }
 
         if self.device.startswith("cuda"):
             decoding_start = torch.cuda.Event(enable_timing=True)
@@ -498,6 +513,11 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_data = empty_data.astype(np.uint8)
             occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
             empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+
+            # save to intermediate representations
+            intermediate_maps["occupied_entropy"] = occ_data
+            intermediate_maps["empty_entropy"] = empty_data
+
             occupied_heatmap = torch.tensor(occ_data, device=self.device)
             empty_heatmap = torch.tensor(empty_data, device=self.device)
 
@@ -695,8 +715,11 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             decoding_end = time.time()
             decoding_metrics["decoding_time"] = decoding_end - decoding_start
+
+        intermediate_maps["occupied_entropy_prob"] = occupied_heatmap.cpu().numpy()
+        intermediate_maps["empty_entropy_prob"] = empty_heatmap.cpu().numpy()
         
-        return occupied_heatmap, empty_heatmap, decoding_metrics
+        return occupied_heatmap, empty_heatmap, decoding_metrics, intermediate_maps
     
     def encode_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
             occupied: bool = True) -> None:

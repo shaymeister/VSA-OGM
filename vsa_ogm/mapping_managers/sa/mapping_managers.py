@@ -46,6 +46,7 @@ class SingleAgentMappingManager:
                 raise ValueError(f"Invalid metric: {metric}. Valid metrics are: {VALID_METRICS}")
             
         self.plotting_flags: DictConfig = config.mapping_manager.plotting_flags
+        self.saving_flags: DictConfig = config.mapping_manager.saving_flags
 
         self._initialize_mapper()
 
@@ -112,7 +113,7 @@ class SingleAgentMappingManager:
             self.all_y_test.append(y_test)
 
             # run the mapper on the data
-            fit_metrics: dict = self.mapper.fit(X_train, y_train)
+            fit_metrics, intermediate_maps = self.mapper.fit(X_train, y_train)
             complete_metric_dict.update(fit_metrics)
 
             # predict the testing data
@@ -159,6 +160,30 @@ class SingleAgentMappingManager:
                         y_test,
                         title=f"TestingPredictions_{idx}",
                         epoch=idx)
+                    
+            if self.plotting_flags.plot_images:
+                for logger in self.loggers:
+                    logger.log_image(self.mapper.ogm, caption="OGM", epoch=idx)
+
+                for key, value in intermediate_maps.items():
+                    if value is not None:
+                        for logger in self.loggers:
+                            logger.log_image(value, caption=key, epoch=idx)
+
+            if self.saving_flags.save_memory_vectors:
+                for logger in self.loggers:
+                    logger.log_matrix(self.mapper.occupied_quadrant_memory_vectors.cpu().numpy(), caption="occupied_tile_memories", epoch=idx)
+                    logger.log_matrix(self.mapper.empty_quadrant_memory_vectors.cpu().numpy(), caption="empty_tile_memories", epoch=idx)
+
+
+            if self.saving_flags.save_image_matrices:
+                for logger in self.loggers:
+                    logger.log_matrix(self.mapper.ogm, caption="OGM", epoch=idx)
+
+                for key, value in intermediate_maps.items():
+                    if value is not None:
+                        for logger in self.loggers:
+                            logger.log_matrix(value, caption=key, epoch=idx)
 
             # log the metrics
             for logger in self.loggers:
