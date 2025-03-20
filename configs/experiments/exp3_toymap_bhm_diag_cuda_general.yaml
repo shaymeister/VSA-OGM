@@ -14,6 +14,7 @@ logging:
   override_existing: False
   save_dir: "logs"
   verbose: False
+  log_interval: 1
 mapping:
   axis_resolution: 1.0
   device: "cuda"

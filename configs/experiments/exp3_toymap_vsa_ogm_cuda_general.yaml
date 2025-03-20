@@ -28,7 +28,7 @@ mapping:
   mapping_type: "SA_VSA_OGM"
   num_tiles: 2
   seed: 42
-  vector_dimensionality: 64000
+  vector_dimensionality: 32000
   vector_length_scale: 2.0
   verbose: True
 mapping_manager:
