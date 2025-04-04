@@ -8,3 +8,4 @@ wandb/
 datasets/ma/archive/**
 datasets/ma/toysim_agent1/**
 datasets/ma/toysim_agent2/**
+**/__pycache__/
