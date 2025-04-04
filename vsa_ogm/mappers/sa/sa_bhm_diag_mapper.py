@@ -48,21 +48,21 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
         self.verbose: bool = config.mapping.verbose
 
         self.gamma = self.config.mapping.gamma
-        self.cell_resolution = (self.axis_resolution, self.axis_resolution)
+        self.cell_resolution = (2.0, 2.0)
         self.num_iterations = 1
         
-        self.cell_max_min = (self.world_bounds[0], self.world_bounds[1], self.world_bounds[0], self.world_bounds[1])
+        self.cell_max_min = (self.world_bounds[0], self.world_bounds[1], self.world_bounds[2], self.world_bounds[3])
 
         self.grid = self.__calc_grid_auto()
 
         self.query_x: np.ndarray = np.arange(
             self.world_bounds[0],
-            self.world_bounds[1] - 1,
+            self.world_bounds[1] + 1,
             self.axis_resolution
         )
         self.query_y: np.ndarray = np.arange(
             self.world_bounds[0],
-            self.world_bounds[1] - 1,
+            self.world_bounds[1] + 1,
             self.axis_resolution
         )
 
@@ -203,6 +203,7 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
         prediction_metrics: dict = {}
 
         print(f"X Shape: {Xq.shape}")
+        start_time = time.time()
 
         if not isinstance(Xq, torch.Tensor):
             Xq = torch.from_numpy(Xq).to(self.device)
@@ -219,6 +220,8 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
         output = torch.sigmoid(k * mu_a)
         output = output.cpu().numpy()
 
+        end_time = time.time()
+        print(f"Prediction Time: {(end_time - start_time) / 1000}")
 
         print(f"Predictions Shape: {output.shape}")
 
