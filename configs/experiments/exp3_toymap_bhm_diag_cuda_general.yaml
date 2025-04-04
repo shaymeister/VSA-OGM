@@ -18,7 +18,7 @@ logging:
 mapping:
   axis_resolution: 1.0
   device: "cuda"
-  gamma: 6.71
+  gamma: 18
   mapping_type: "SA_BHM_DIAG"
   seed: 42
   verbose: True
