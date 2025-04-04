@@ -1,21 +1,20 @@
-experiment_name: "exp3_sa_toymap_bhm_diag_cuda_general"
+experiment_name: "exp3_sa_intel_bhm_diag_cuda_general"
 experiment_type: "single_agent"
 
 data:
-  dataset_name: "toysim"
-  data_dir: "datasets/sa/toysim0/npz"
-  file_prefix: "results_frame_"
-  file_suffix: ".npz"
+  dataset_name: "intel"
+  "data_dir": datasets/sa/intel.csv
+  "world_bounds": [-25, 20, -30, 15] # x_min, x_max, y_min, y_max; meters
   test_split: 0.2
-  world_bounds: [-50, 50, -50, 50] # x_min, x_max, y_min, y_max; meters
 logging:
   enabled: True
   log_images: True
+  log_interval: 25
   override_existing: False
   save_dir: "logs"
   verbose: False
 mapping:
-  axis_resolution: 1.0
+  axis_resolution: 0.2
   device: "cuda"
   gamma: 6.71
   mapping_type: "SA_BHM_DIAG"

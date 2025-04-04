@@ -29,7 +29,7 @@ mapping:
   num_tiles: 2
   seed: 42
   vector_dimensionality: 32000
-  vector_length_scale: 2.0
+  vector_length_scale: 1.0
   verbose: True
 mapping_manager:
   metrics: ["auc", "nll"]
