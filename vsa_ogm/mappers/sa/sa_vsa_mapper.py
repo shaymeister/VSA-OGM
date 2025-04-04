@@ -962,12 +962,12 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         updated_indices = torch.unique(closest_quads)
 
         if occupied:
-            norm_qv = self.occupied_quadrant_memory_vectors / torch.norm(
-                self.occupied_quadrant_memory_vectors, dim=1, keepdim=True
+            norm_qv = self.occupied_quadrant_memory_vectors[updated_indices] / torch.norm(
+                self.occupied_quadrant_memory_vectors[updated_indices], dim=1, keepdim=True
             )
         else:
-            norm_qv = self.empty_quadrant_memory_vectors / torch.norm(
-                self.empty_quadrant_memory_vectors, dim=1, keepdim=True
+            norm_qv = self.empty_quadrant_memory_vectors[updated_indices] / torch.norm(
+                self.empty_quadrant_memory_vectors[updated_indices], dim=1, keepdim=True
             )
 
         # Timing (End)
@@ -1005,14 +1005,28 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             dot_product_start = time.time()
 
-        # result = torch.zeros(
-        #     (self.occupied_quadrant_memory_vectors.shape[0],) + self.xy_axis_matrix.shape[:2], 
-        #     device=self.device
-        # )
+        if not hasattr(self, "occupied_results"):
+            self.occupied_results = torch.zeros(
+                (self.occupied_quadrant_memory_vectors.shape[0],) + self.xy_axis_matrix.shape[:2], 
+                device=self.device
+            )
+            self.empty_results = torch.zeros(
+                (self.empty_quadrant_memory_vectors.shape[0],) + self.xy_axis_matrix.shape[:2], 
+                device=self.device
+            )
 
-        result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+        if occupied:
+            result = self.occupied_results
+        else:
+            result = self.empty_results
 
-        # result[updated_indices] = partial_result
+        partial_result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+        result[updated_indices] = partial_result
+
+        if occupied:
+            self.occupied_results = result
+        else:
+            self.empty_results = result
 
         # Timing (End)
         if self.device.startswith("cuda"):
