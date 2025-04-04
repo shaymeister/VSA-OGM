@@ -120,7 +120,7 @@ class SingleAgentMappingManager:
             all_y_test_np = np.concatenate(self.all_y_test)
             all_X_test_np = np.vstack(self.all_X_test)
 
-
+            
             y_pred, pred_metrics = self.mapper.predict(all_X_test_np)
             complete_metric_dict.update(pred_metrics)
 
