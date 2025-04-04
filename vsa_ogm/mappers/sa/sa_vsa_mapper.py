@@ -169,6 +169,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self.vector_dimensionality: int = config.mapping.vector_dimensionality
         self.vector_length_scale: float = config.mapping.vector_length_scale
         self.world_bounds: List[int] = config.data.world_bounds
+        self.world_bounds_tensor: torch.tensor = torch.tensor(
+            self.world_bounds,
+            device=self.device
+        )
         self.verbose: bool = config.mapping.verbose
 
         # -----------------------------------------------
@@ -201,8 +205,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self._build_xy_axis_vectors()
 
         # Memory Caching for Repeated Operations
-        self.x_axis_fd = torch.fft.fft(self.xy_axis_vectors[0])
-        self.y_axis_fd = torch.fft.fft(self.xy_axis_vectors[1])
+        self.x_axis_fd = torch.fft.fft(self.xy_axis_vectors[0])[None, :]
+        self.y_axis_fd = torch.fft.fft(self.xy_axis_vectors[1])[None, :]
 
         self._build_xy_axis_matrix()
         self._build_xy_axis_heatmaps()
@@ -216,6 +220,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             device=self.device
         )
         self.empty_quadrant_memory_vectors = torch.clone(self.occupied_quadrant_memory_vectors)
+
+        self.bounds_X = self.quadrant_axis_bounds[0][0][1]
+        self.bounds_Y = self.quadrant_axis_bounds[0][1][1]
+        self.num_tiles = int(self.quadrant_centers[0].shape[0] ** (1/2))
 
 
     def fit(self, X: List[np.ndarray], y: List[np.ndarray]) -> None:
@@ -493,6 +501,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_data = empty_data.astype(np.uint8)
             occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
             empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+
+            intermediate_maps["occupied_entropy"] = occ_data
+            intermediate_maps["empty_entropy"] = empty_data
+        
             occupied_heatmap = torch.tensor(occ_data, device=self.device)
             empty_heatmap = torch.tensor(empty_data, device=self.device)
 
@@ -712,6 +724,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             decoding_metrics["decoding_time"] = decoding_start.elapsed_time(
                 decoding_end
             )
+            print(decoding_metrics["decoding_time"])
         else:
             decoding_end = time.time()
             decoding_metrics["decoding_time"] = decoding_end - decoding_start
@@ -746,8 +759,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             world_bound_norm_start = time.time()
 
         # Computations
-        point_cloud[:, 0] -= self.world_bounds[0]
-        point_cloud[:, 1] -= self.world_bounds[2]
+        point_cloud[:, :2] -= self.world_bounds_tensor[[0, 2]]
         
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -775,7 +787,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         ups: torch.tensor = ups.unsqueeze(1)
         qcm: torch.tensor = self.quadrant_centers[0]
         qcm: torch.tensor = qcm.unsqueeze(0)
-        qcm: torch.tensor = qcm.repeat(ups.shape[0], 1, 1)
         dists: torch.tensor = self.pdist(ups, qcm)
         closest_quads: torch.tensor = torch.argmin(dists, dim=1)
         ups = ups.squeeze(1)
@@ -800,9 +811,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             quadrant_norm_start = time.time()
 
         # Computation
-        print(self.quadrant_axis_bounds)
-        ups[:, 0] = ups[:, 0] % self.quadrant_axis_bounds[0][0][1]
-        ups[:, 1] = ups[:, 1] % self.quadrant_axis_bounds[0][1][1]
+        ups[:, 0].remainder_(self.bounds_X)
+        ups[:, 1].remainder_(self.bounds_Y)
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -816,26 +826,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # ---------------------------
         # Timing (Start)
         if self.device.startswith("cuda"):
-            axis_fd_matrix_start = torch.cuda.Event(enable_timing=True)
-            axis_fd_matrix_end = torch.cuda.Event(enable_timing=True)
-            axis_fd_matrix_start.record()
-        else:
-            axis_fd_matrix_start: float = time.time()
-
-        # Computation
-        x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
-        y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(ups.shape[0], 1)
-
-        # Timing (End)
-        if self.device.startswith("cuda"):
-            axis_fd_matrix_end.record()
-        else:
-            axis_fd_matrix_end = time.time()
-            encode_metrics["axis_fd_matrix"] = axis_fd_matrix_end - axis_fd_matrix_start
-
-
-        # Timing (Start)
-        if self.device.startswith("cuda"):
             powers_start = torch.cuda.Event(enable_timing=True)
             powers_end = torch.cuda.Event(enable_timing=True)
             powers_start.record()
@@ -843,8 +833,9 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             powers_start = time.time()
 
         # Computation
-        x_powers = (ups[:, 0] / self.vector_length_scale)
-        y_powers = (ups[:, 1] / self.vector_length_scale)
+        ups = ups / self.vector_length_scale
+        x_powers = ups[:, 0]
+        y_powers = ups[:, 1]
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -855,25 +846,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
 
         # Timing (Start)
         if self.device.startswith("cuda"):
-            power_matrix_start = torch.cuda.Event(enable_timing=True)
-            power_matrix_end = torch.cuda.Event(enable_timing=True)
-            power_matrix_start.record()
-        else:
-            power_matrix_start = time.time()
-
-        # Computation
-        x_power_matrix = x_powers.repeat(self.vector_dimensionality, 1).T
-        y_power_matrix = y_powers.repeat(self.vector_dimensionality, 1).T
-
-        # Timing (End)
-        if self.device.startswith("cuda"):
-            power_matrix_end.record()
-        else:
-            power_matrix_end = time.time()
-            encode_metrics["power_matrix"] = power_matrix_end - power_matrix_start
-
-        # Timing (Start)
-        if self.device.startswith("cuda"):
             axis_fd_power_matrix_start = torch.cuda.Event(enable_timing=True)
             axis_fd_power_matrix_end = torch.cuda.Event(enable_timing=True)
             axis_fd_power_matrix_start.record()
@@ -881,8 +853,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             axis_fd_power_matrix_start = time.time()
 
         # Computation
-        x_axis_fd_matrix = x_axis_fd_matrix ** x_power_matrix
-        y_axis_fd_matrix = y_axis_fd_matrix ** y_power_matrix
+        x_axis_fd_matrix = self.x_axis_fd ** x_powers[:, None]
+        y_axis_fd_matrix = self.y_axis_fd ** y_powers[:, None]
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -987,6 +959,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             qv_norm_start = time.time()
 
+        updated_indices = torch.unique(closest_quads)
+
         if occupied:
             norm_qv = self.occupied_quadrant_memory_vectors / torch.norm(
                 self.occupied_quadrant_memory_vectors, dim=1, keepdim=True
@@ -1031,7 +1005,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             dot_product_start = time.time()
 
+        # result = torch.zeros(
+        #     (self.occupied_quadrant_memory_vectors.shape[0],) + self.xy_axis_matrix.shape[:2], 
+        #     device=self.device
+        # )
+
         result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+
+        # result[updated_indices] = partial_result
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -1048,12 +1029,10 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             hm_decoding_start = time.time()
 
-        num_tiles = int(self.quadrant_centers[0].shape[0] ** (1/2))
-
-        if num_tiles > 1:
-            result = result.view(num_tiles, num_tiles, self.quadrant_indices_y[1], self.quadrant_indices_x[1])
+        if self.num_tiles > 1:
+            result = result.view(self.num_tiles, self.num_tiles, self.quadrant_indices_y[1], self.quadrant_indices_x[1])
             result = result.permute(1, 2, 0, 3)
-            result = result.reshape(num_tiles * self.quadrant_indices_y[1], num_tiles * self.quadrant_indices_x[1])
+            result = result.reshape(self.num_tiles * self.quadrant_indices_y[1], self.num_tiles * self.quadrant_indices_x[1])
         else:
             result = result.squeeze(0)
 
@@ -1084,15 +1063,6 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             )
             encode_metrics["tile_memory_calculation"] = tile_memory_calculation_start.elapsed_time(
                 tile_memory_calculation_end
-            )
-            encode_metrics["axis_fd_matrix"] = axis_fd_matrix_start.elapsed_time(
-                axis_fd_matrix_end
-            )
-            encode_metrics["powers"] = powers_start.elapsed_time(
-                powers_end
-            )
-            encode_metrics["power_matrix"] = power_matrix_start.elapsed_time(
-                power_matrix_end
             )
             encode_metrics["axis_fd_power_matrix"] = axis_fd_power_matrix_start.elapsed_time(
                 axis_fd_power_matrix_end
@@ -1476,8 +1446,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             device=self.device
         )
 
-        x_axis_fd_matrix = self.x_axis_fd.unsqueeze(0).repeat(x_shape, 1)
-        y_axis_fd_matrix = self.y_axis_fd.unsqueeze(0).repeat(y_shape, 1)
+        x_axis_fd_matrix = self.x_axis_fd.repeat(x_shape, 1)
+        y_axis_fd_matrix = self.y_axis_fd.repeat(y_shape, 1)
 
         x_powers = (self.xy_axis_linspace[0][:x_shape] / self.vector_length_scale)
         y_powers = (self.xy_axis_linspace[1][:y_shape] / self.vector_length_scale)
