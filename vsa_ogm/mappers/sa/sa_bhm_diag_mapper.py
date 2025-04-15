@@ -48,7 +48,7 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
         self.verbose: bool = config.mapping.verbose
 
         self.gamma = self.config.mapping.gamma
-        self.cell_resolution = (2.0, 2.0)
+        self.cell_resolution = (1.35, 1.35)
         self.num_iterations = 1
         
         self.cell_max_min = (self.world_bounds[0], self.world_bounds[1], self.world_bounds[2], self.world_bounds[3])
@@ -61,8 +61,8 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
             self.axis_resolution
         )
         self.query_y: np.ndarray = np.arange(
-            self.world_bounds[0],
-            self.world_bounds[1] + 1,
+            self.world_bounds[2],
+            self.world_bounds[3] + 1,
             self.axis_resolution
         )
 
@@ -117,10 +117,6 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
 
         self.train(X, y)
 
-
-
-        start = time.time()
-
         Y_query = self.predict_grid(self.query_grid)
         self.ogm = Y_query.cpu().numpy()
         self.ogm = np.reshape(
@@ -128,12 +124,16 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
             (self.query_y.shape[0], self.query_x.shape[0])  # (M, N)
         )
 
+        start = time.time()
+
         if self.device.startswith("cuda"):
             end_time.record()
             torch.cuda.synchronize()
             fit_metrics["training_time"] = start_time.elapsed_time(end_time)
         else:
-            fit_metrics["training_time"] = (time.time() - start_time) / 1000
+            fit_metrics["training_time"] = (time.time() - start_time) * 1000
+
+
 
         if self.verbose:
             print(f"(SBHM) Training Time: {fit_metrics['training_time']}")
@@ -221,7 +221,7 @@ class SA_BHM_DIAG(BaseSingleAgentMapper):
         output = output.cpu().numpy()
 
         end_time = time.time()
-        print(f"Prediction Time: {(end_time - start_time) / 1000}")
+        print(f"Prediction Time: {(end_time - start_time) * 1000}")
 
         print(f"Predictions Shape: {output.shape}")
 

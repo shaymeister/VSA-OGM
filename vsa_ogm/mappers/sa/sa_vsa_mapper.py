@@ -6,6 +6,7 @@ from skimage.morphology import disk
 import time
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import List, Tuple, Union
 
 from .base_sa_mapper import BaseSingleAgentMapper
@@ -66,6 +67,37 @@ def make_good_unitary(num_dims: int, device: str,
     assert torch.allclose(torch.linalg.norm(v), torch.ones(v.shape, device=device))
 
     return v
+
+
+@torch.jit.script
+def compute_local_entropy(tensor: torch.Tensor, radius: int) -> torch.Tensor:
+    tensor = tensor.clamp(0, 1)
+
+    bins = 256
+    quantized = (tensor * (bins - 1)).long()
+
+    one_hot = F.one_hot(quantized, num_classes=bins).permute(2, 0, 1).float().unsqueeze(0)
+
+    diameter = 2 * radius + 1
+    y = torch.arange(diameter, device=tensor.device)
+    x = torch.arange(diameter, device=tensor.device)
+    yy, xx = torch.meshgrid(y, x, indexing="ij")
+    center = radius
+    disk_kernel = ((xx - center) ** 2 + (yy - center) ** 2 <= radius ** 2).float()
+    disk_kernel = disk_kernel / disk_kernel.sum()
+
+    kernel = disk_kernel.expand(bins, 1, diameter, diameter).contiguous()
+
+    local_hist = F.conv2d(one_hot, kernel, padding=radius, groups=bins)
+    local_hist = local_hist.clamp(min=1e-10)
+
+    entropy_map = -(local_hist * torch.log2(local_hist)).sum(dim=1)
+
+    return entropy_map.squeeze(0)
+
+@torch.compile
+def compute_mm(norm_qv, xy_axis_matrix):
+    return torch.einsum('nm,xym->nxy', norm_qv, xy_axis_matrix)
 
 
 class SSPGenerator:
@@ -225,6 +257,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self.bounds_Y = self.quadrant_axis_bounds[0][1][1]
         self.num_tiles = int(self.quadrant_centers[0].shape[0] ** (1/2))
 
+        self.xy_axis_matrix = self.xy_axis_matrix.contiguous()
 
     def fit(self, X: List[np.ndarray], y: List[np.ndarray]) -> None:
         """
@@ -298,11 +331,13 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         total_time = sum_nested_dict(fit_metrics)
         if not self.device.startswith("cuda"):
             # python time module returns time in seconds so convert to milliseconds
-            total_time /= 1000
+            total_time *= 1000
         fit_metrics["total_time"] = total_time
 
         self.ogm = ogm.cpu().numpy()
         self.num_observations += 1
+
+        print(json.dumps(fit_metrics, indent=4))
 
         return fit_metrics, intermediate_maps
     
@@ -493,20 +528,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 2)
             empty_heatmap = torch.pow(empty_heatmap, 2)
-            occ_data = occupied_heatmap.cpu().numpy()
-            empty_data = empty_heatmap.cpu().numpy()
-            occ_data *= 255
-            empty_data *= 255
-            occ_data = occ_data.astype(np.uint8)
-            empty_data = empty_data.astype(np.uint8)
-            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
-            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
-
-            intermediate_maps["occupied_entropy"] = occ_data
-            intermediate_maps["empty_entropy"] = empty_data
-        
-            occupied_heatmap = torch.tensor(occ_data, device=self.device)
-            empty_heatmap = torch.tensor(empty_data, device=self.device)
+            occupied_heatmap = compute_local_entropy(occupied_heatmap, self.decoding_disk_radii_1)
+            empty_heatmap = compute_local_entropy(empty_heatmap, self.decoding_disk_radii_2)
 
         # -----------------------------------------------
         # Decoding Approach 12: renyi entropy with
@@ -517,21 +540,23 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.pow(occupied_heatmap, 3)
             empty_heatmap = torch.pow(empty_heatmap, 3)
-            occ_data = occupied_heatmap.cpu().numpy()
-            empty_data = empty_heatmap.cpu().numpy()
-            occ_data *= 255
-            empty_data *= 255
-            occ_data = occ_data.astype(np.uint8)
-            empty_data = empty_data.astype(np.uint8)
-            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
-            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = compute_local_entropy(occupied_heatmap, self.decoding_disk_radii_1)
+            empty_heatmap = compute_local_entropy(empty_heatmap, self.decoding_disk_radii_2)
+            # occ_data = occupied_heatmap.cpu().numpy()
+            # empty_data = empty_heatmap.cpu().numpy()
+            # occ_data *= 255
+            # empty_data *= 255
+            # occ_data = occ_data.astype(np.uint8)
+            # empty_data = empty_data.astype(np.uint8)
+            # occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            # empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
 
             # save to intermediate representations
-            intermediate_maps["occupied_entropy"] = occ_data
-            intermediate_maps["empty_entropy"] = empty_data
+            # intermediate_maps["occupied_entropy"] = occ_data
+            # intermediate_maps["empty_entropy"] = empty_data
 
-            occupied_heatmap = torch.tensor(occ_data, device=self.device)
-            empty_heatmap = torch.tensor(empty_data, device=self.device)
+            # occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            # empty_heatmap = torch.tensor(empty_data, device=self.device)
 
         # -----------------------------------------------
         # Decoding Approach 13: ReLU
@@ -712,11 +737,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         # -----------------------------------------------
         else:
             raise ValueError(f"Unknown decoding method: {self.decoding_method}")
+        
+        # intermediate_maps["occupied_entropy"] = torch.clone(occupied_heatmap)
+        # intermediate_maps["empty_entropy"] = torch.clone(empty_heatmap)
 
         stacked_heatmap = torch.stack((occupied_heatmap, empty_heatmap), dim=0)
         stacked_heatmap = torch.softmax(stacked_heatmap, dim=0)
-        occupied_heatmap = stacked_heatmap[0]
-        empty_heatmap = stacked_heatmap[1]
+        occupied_heatmap_softmax = stacked_heatmap[0]
+        empty_heatmap_softmax = stacked_heatmap[1]
         
         if self.device.startswith("cuda"):
             decoding_end.record()
@@ -729,10 +757,14 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             decoding_end = time.time()
             decoding_metrics["decoding_time"] = decoding_end - decoding_start
 
-        intermediate_maps["occupied_entropy_prob"] = occupied_heatmap.cpu().numpy()
-        intermediate_maps["empty_entropy_prob"] = empty_heatmap.cpu().numpy()
+        intermediate_maps["occupied_entropy_prob"] = occupied_heatmap_softmax.cpu().numpy()
+        intermediate_maps["empty_entropy_prob"] = empty_heatmap_softmax.cpu().numpy()
+        intermediate_maps["ogm_testing"] = (occupied_heatmap_softmax - empty_heatmap_softmax).cpu().numpy()
         
-        return occupied_heatmap, empty_heatmap, decoding_metrics, intermediate_maps
+        # intermediate_maps["occupied_entropy"] = occupied_heatmap.cpu().numpy()
+        # intermediate_maps["empty_entropy"] = empty_heatmap.cpu().numpy()
+        
+        return occupied_heatmap_softmax, empty_heatmap_softmax, decoding_metrics, intermediate_maps
     
     def encode_observation(self, point_cloud: Union[np.ndarray, torch.tensor],
             occupied: bool = True) -> None:
@@ -767,7 +799,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             world_bound_norm_end = time.time()
             encode_metrics["world_bound_norm"] = (world_bound_norm_end \
-                - world_bound_norm_start) / 1000
+                - world_bound_norm_start)
 
         ups = point_cloud
 
@@ -853,8 +885,12 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             axis_fd_power_matrix_start = time.time()
 
         # Computation
-        x_axis_fd_matrix = self.x_axis_fd ** x_powers[:, None]
-        y_axis_fd_matrix = self.y_axis_fd ** y_powers[:, None]
+        # x_axis_fd_matrix = self.x_axis_fd ** x_powers[:, None]
+        # y_axis_fd_matrix = self.y_axis_fd ** y_powers[:, None]
+
+        x_axis_fd_matrix = torch.exp(x_powers[:, None] * torch.log(self.x_axis_fd))
+        y_axis_fd_matrix = torch.exp(y_powers[:, None] * torch.log(self.y_axis_fd))
+
 
         # Timing (End)
         if self.device.startswith("cuda"):
@@ -1020,7 +1056,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             result = self.empty_results
 
-        partial_result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+        # partial_result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+        partial_result = compute_mm(norm_qv, self.xy_axis_matrix)
         result[updated_indices] = partial_result
 
         if occupied:

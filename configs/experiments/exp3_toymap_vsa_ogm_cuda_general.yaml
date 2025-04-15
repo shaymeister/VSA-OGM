@@ -20,11 +20,11 @@ mapping:
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:
-    method: "renyi_normalize_cubic"
+    method: "renyi_normalize_squaring"
     alpha: None
     disk_radii_1: 3
     disk_radii_2: 3
-  device: "cuda"
+  device: "cpu"
   mapping_type: "SA_VSA_OGM"
   num_tiles: 2
   seed: 42

@@ -14,7 +14,7 @@ logging:
   verbose: False
   log_interval: 25
 mapping:
-  axis_resolution: 0.1
+  axis_resolution: 0.2
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:

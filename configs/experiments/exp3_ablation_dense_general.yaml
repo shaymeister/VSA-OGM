@@ -15,12 +15,13 @@ logging:
   override_existing: False
   save_dir: "logs"
   verbose: False
+  log_interval: 5
 mapping:
   axis_resolution: 0.2
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:
-    method: "renyi_normalize_cubic"
+    method: "renyi_normalize_squaring"
     alpha: None
     disk_radii_1: 3
     disk_radii_2: 3
