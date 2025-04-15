@@ -1,18 +1,12 @@
-experiment_name: "VSA-OGM Parameter Ablation"
+experiment_name: "exp3_sa_ablation_sparse_general"
 experiment_type: "single_agent"
-experiment_parameters:
-  mapping:
-    axis_resolution: [0.1, 0.25, 0.5, 1.0]
-    vector_dimensionality: [32768, 16384, 8192, 4096, 2048, 1024, 512, 256]
-    vector_length_scale: [0.1, 0.2, 0.5, 1.0, 1.5, 2.0]
-    num_tiles: [1, 2, 4, 8]
 
 data:
   dataset_name: "ablation"
   data_dir: "datasets/sa/"
-  file_prefix: "ablation_dense"
+  file_prefix: "ablation_sparse"
   file_suffix: ".pkl"
-  num_chunks: 150
+  num_chunks: 20
   test_split: 0.2
   world_bounds: [-6, 6, -6, 6] # x_min, x_max, y_min, y_max; meters
 logging:
@@ -22,11 +16,11 @@ logging:
   save_dir: "logs"
   verbose: False
 mapping:
-  axis_resolution: 0.5
+  axis_resolution: 0.2
   data_filter: "passthrough"
   data_filter_args: {}
   decoding:
-    method: "renyi_normalize_squaring"
+    method: "renyi_normalize_cubic"
     alpha: None
     disk_radii_1: 3
     disk_radii_2: 3
@@ -34,8 +28,8 @@ mapping:
   mapping_type: "SA_VSA_OGM"
   num_tiles: 1
   seed: 42
-  vector_dimensionality: 2048
-  vector_length_scale: 2.0
+  vector_dimensionality: 32768
+  vector_length_scale: 1.0
   verbose: True
 mapping_manager:
   metrics: ["auc", "nll"]
@@ -44,12 +38,17 @@ mapping_manager:
     plot_metrics: True
     plot_point_clouds: False
     plot_predictions: False
-    plot_images: False
+    plot_intermediate_representations: True
+    plot_images: True
+  saving_flags:
+    save_memory_vectors: True
+    save_image_matrices: True
+
   seed: 42
   verbose: True
 wandb:
-  enabled: True
+  enabled: False
   notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
   online: True
-  project_name: "VSA-OGM Parameter Ablation - Ablation Dense"
+  project_name: "VSA-OGM Exp3 Ablation Sparse General"
   verbose: False

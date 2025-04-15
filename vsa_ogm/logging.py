@@ -161,6 +161,24 @@ class WANBDLogger(BaseLogger):
         
         return
     
+    def log_matrix(self, matrix: np.ndarray, caption: str, epoch: int) -> None:
+        """
+        Log a numpy vector vectors to the logger.
+
+        Arguments:
+        ----------
+        memory_vectors : np.ndarray
+            The memory vectors to log.
+        caption : str
+            The caption for the memory vectors.
+        epoch : int
+            The epoch number.
+        """ 
+        if not self.enabled:
+            return
+        
+        return
+    
     def close(self) -> None:
         """
         Close the WandB session.
@@ -317,6 +335,22 @@ class OGMLogger(BaseLogger):
 
         plt.savefig(plt_save_fp)
         plt.close()
+
+    def log_matrix(self, matrix: np.ndarray, caption: str, epoch: int) -> None:
+        """
+        Log a numpy vector vectors to the logger.
+
+        Arguments:
+        ----------
+        memory_vectors : np.ndarray
+            The memory vectors to log.
+        caption : str
+            The caption for the memory vectors.
+        epoch : int
+            The epoch number.
+        """ 
+        fp: str = os.path.join(self.experiment_dir, f"epochs/epoch_{epoch}", f"{caption}.npy")
+        np.save(fp, matrix)
 
     def close(self) -> None:
         """

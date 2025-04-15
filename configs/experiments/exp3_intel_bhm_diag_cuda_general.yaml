@@ -1,0 +1,44 @@
+experiment_name: "exp3_sa_intel_bhm_diag_cuda_general_02"
+experiment_type: "single_agent"
+
+data:
+  dataset_name: "intel"
+  "data_dir": datasets/sa/intel.csv
+  #"world_bounds": [-25, 20, -30, 15] # x_min, x_max, y_min, y_max; meters
+  "world_bounds": [-20, 20, -30, 10] # x_min, x_max, y_min, y_max; meters
+  test_split: 0.1
+logging:
+  enabled: True
+  log_images: True
+  log_interval: 25
+  override_existing: False
+  save_dir: "logs"
+  verbose: False
+mapping:
+  axis_resolution: 0.1
+  device: "cpu"
+  gamma: 6.71
+  mapping_type: "SA_BHM_DIAG"
+  seed: 42
+  verbose: True
+mapping_manager:
+  metrics: ["auc", "nll"]
+  num_mappers: 1
+  plotting_flags: 
+    plot_metrics: True
+    plot_point_clouds: False
+    plot_predictions: False
+    plot_intermediate_representations: True
+    plot_images: True
+  saving_flags:
+    save_memory_vectors: True
+    save_image_matrices: True
+
+  seed: 42
+  verbose: True
+wandb:
+  enabled: False
+  notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
+  online: True
+  project_name: "VSA-OGM Exp3 BHM Diag Cuda General"
+  verbose: False
