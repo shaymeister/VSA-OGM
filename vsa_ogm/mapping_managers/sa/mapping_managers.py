@@ -2,6 +2,7 @@ import numpy as np
 from omegaconf import DictConfig
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
+import time
 from typing import List
 
 from vsa_ogm.data.sa import BaseSingleAgentDataset
@@ -113,7 +114,11 @@ class SingleAgentMappingManager:
             self.all_y_test.append(y_test)
 
             # run the mapper on the data
+            start_time = time.time()
             fit_metrics, intermediate_maps = self.mapper.fit(X_train, y_train)
+            end_time = time.time()
+            fit_time = end_time - start_time
+            print(f"Fit time: {fit_time:.2f} seconds")
             complete_metric_dict.update(fit_metrics)
 
             # predict the testing data
