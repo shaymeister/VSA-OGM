@@ -1,6 +1,7 @@
 import json
 import numpy as np
 from omegaconf import DictConfig
+import os
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
 import time
@@ -8,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Tuple, Union
+
 
 from .base_sa_mapper import BaseSingleAgentMapper
 from ...logging import BaseLogger
@@ -138,6 +140,7 @@ class SSPGenerator:
         1) ssp_matrix (torch.tensor): a matrix of random hypervectors of
             shape [n, self.dimensionality]
         """
+        torch.manual_seed(0)
         ssp_matrix = torch.zeros((n, self.dimensionality), device=self.device)
 
         for i in range(n):
@@ -235,6 +238,13 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self._build_quadrant_indices()
         self._build_xy_axis_linspace()
         self._build_xy_axis_vectors()
+
+        vector_path = "/home/ssnyde9/axis_vectors.pt"
+        if not os.path.exists(vector_path):
+            torch.save(self.xy_axis_vectors, vector_path)
+        else:
+            print("Loading axis vectors from file")
+            self.xy_axis_vectors = torch.load(vector_path)
 
         # Memory Caching for Repeated Operations
         self.x_axis_fd = torch.fft.fft(self.xy_axis_vectors[0])[None, :]
