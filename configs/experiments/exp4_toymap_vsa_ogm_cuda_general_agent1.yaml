@@ -1,14 +1,9 @@
-experiment_name: "VSA-OGM Parameter Ablation"
+experiment_name: "exp3_sa_toymap_vsa_ogm_cuda_general_agent1"
 experiment_type: "single_agent"
-experiment_parameters:
-  mapping:
-    vector_dimensionality: [32768, 16384, 8192, 4096, 2048, 1024, 512, 256]
-    vector_length_scale: [0.1, 0.2, 0.5, 1.0, 1.5, 2.0]
-    num_tiles: [1, 2, 4, 8]
 
 data:
   dataset_name: "toysim"
-  data_dir: "datasets/sa/toysim0/npz"
+  data_dir: "datasets/ma/toysim_agent1"
   file_prefix: "results_frame_"
   file_suffix: ".npz"
   test_split: 0.2
@@ -31,27 +26,29 @@ mapping:
     disk_radii_2: 3
   device: "cuda"
   mapping_type: "SA_VSA_OGM"
-  num_tiles: 1
+  num_tiles: 2
   seed: 42
-  vector_dimensionality: 2048
-  vector_length_scale: 2.0
+  vector_dimensionality: 32000
+  vector_length_scale: 1.0
   verbose: True
 mapping_manager:
   metrics: ["auc", "nll"]
   num_mappers: 1
   plotting_flags: 
     plot_metrics: True
-    plot_point_clouds: False
-    plot_predictions: False
-    plot_images: False
+    plot_point_clouds: True
+    plot_predictions: True
+    plot_intermediate_representations: True
+    plot_images: True
   saving_flags:
-    save_memory_vectors: False
-    save_image_matrices: False
+    save_memory_vectors: True
+    save_image_matrices: True
+
   seed: 42
   verbose: True
 wandb:
-  enabled: True
+  enabled: False
   notes: "This experiment evaluates the performance of the decoding method on the ablation dataset."
   online: True
-  project_name: "VSA-OGM Parameter Ablation - ToySim - V2"
+  project_name: "VSA-OGM Exp3 Toy Sim VSA OGM Cuda General"
   verbose: False

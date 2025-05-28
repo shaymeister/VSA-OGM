@@ -34,6 +34,8 @@ class ToySimSingleAgentDataset(BaseSingleAgentDataset):
         # sort the list of filepaths by the digits in their headers
         files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
+        print(f"Found {len(files)} files in {file_path} with prefix {prefix} and suffix {suffix}")
+
         self.files: list[str] = files
         self.map_size: list[int] = config.data.world_bounds
         self.step_limit: int = len(self.files) - 1
