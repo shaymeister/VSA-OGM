@@ -73,6 +73,7 @@ def make_good_unitary(num_dims: int, device: str,
 
 @torch.jit.script
 def compute_local_entropy(tensor: torch.Tensor, radius: int) -> torch.Tensor:
+    print(tensor.shape)
     tensor = tensor.clamp(0, 1)
 
     bins = 256
@@ -200,6 +201,9 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self.decoding_disk_radii_2: int = config.mapping.decoding.disk_radii_2
         self.device: str = config.mapping.device
         self.num_tiles: int = config.mapping.num_tiles
+
+        print(f"Num Tiles: {self.num_tiles}")
+
         self.seed: int = config.mapping.seed
         self.vector_dimensionality: int = config.mapping.vector_dimensionality
         self.vector_length_scale: float = config.mapping.vector_length_scale
@@ -239,12 +243,12 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         self._build_xy_axis_linspace()
         self._build_xy_axis_vectors()
 
-        vector_path = "/home/ssnyde9/axis_vectors.pt"
-        if not os.path.exists(vector_path):
-            torch.save(self.xy_axis_vectors, vector_path)
-        else:
-            print("Loading axis vectors from file")
-            self.xy_axis_vectors = torch.load(vector_path)
+        # vector_path = "/home/ssnyde9/axis_vectors.pt"
+        # if not os.path.exists(vector_path):
+        #     torch.save(self.xy_axis_vectors, vector_path)
+        # else:
+        #     print("Loading axis vectors from file")
+        #     self.xy_axis_vectors = torch.load(vector_path)
 
         # Memory Caching for Repeated Operations
         self.x_axis_fd = torch.fft.fft(self.xy_axis_vectors[0])[None, :]
@@ -415,6 +419,16 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             empty_heatmap /= torch.max(empty_heatmap)
             occupied_heatmap = torch.square(occupied_heatmap)
             empty_heatmap = torch.square(empty_heatmap)
+            occ_data = occupied_heatmap.cpu().numpy()
+            empty_data = empty_heatmap.cpu().numpy()
+            occ_data *= 255
+            empty_data *= 255
+            occ_data = occ_data.astype(np.uint8)
+            empty_data = empty_data.astype(np.uint8)
+            occ_data = entropy(occ_data, disk(self.decoding_disk_radii_1))
+            empty_data = entropy(empty_data, disk(self.decoding_disk_radii_2))
+            occupied_heatmap = torch.tensor(occ_data, device=self.device)
+            empty_heatmap = torch.tensor(empty_data, device=self.device)
 
         # -----------------------------------------------
         # Decoding Approach 2: normalize the individual
@@ -1066,8 +1080,8 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         else:
             result = self.empty_results
 
-        # partial_result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
-        partial_result = compute_mm(norm_qv, self.xy_axis_matrix)
+        partial_result = torch.einsum('nm,xym->nxy', norm_qv, self.xy_axis_matrix)
+        # partial_result = compute_mm(norm_qv, self.xy_axis_matrix)
         result[updated_indices] = partial_result
 
         if occupied:
@@ -1091,6 +1105,7 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
             hm_decoding_start = time.time()
 
         if self.num_tiles > 1:
+            print(f"result shape before reshape: {result.shape}")
             result = result.view(self.num_tiles, self.num_tiles, self.quadrant_indices_y[1], self.quadrant_indices_x[1])
             result = result.permute(1, 2, 0, 3)
             result = result.reshape(self.num_tiles * self.quadrant_indices_y[1], self.num_tiles * self.quadrant_indices_x[1])
@@ -1100,6 +1115,9 @@ class SA_VSA_OGM(BaseSingleAgentMapper):
         temp_xy_axis_heatmap = result
 
         temp_xy_axis_heatmap = torch.nan_to_num(temp_xy_axis_heatmap)
+        print(f"Max value in heatmap: {torch.max(temp_xy_axis_heatmap)}")
+        print(f"Min value in heatmap: {torch.min(temp_xy_axis_heatmap)}")
+        print(f"Shape of heatmap: {temp_xy_axis_heatmap.shape}")
         if occupied:
             self.xy_axis_occupied_heatmap = temp_xy_axis_heatmap
         else:
