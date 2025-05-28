@@ -1,5 +1,8 @@
 import itertools
 import os
+import subprocess
+import sys
+import tempfile
 from omegaconf import DictConfig, OmegaConf
 
 from vsa_ogm.data import load_data
@@ -17,6 +20,9 @@ def launch_evaluation(base_config: DictConfig, override_config: DictConfig) -> N
     """
     Launch the experiment.
     """
+
+    print("override_config:")
+    print(OmegaConf.to_yaml(override_config))
 
     # Merge the configurations
     config = OmegaConf.merge(base_config, override_config)
@@ -77,6 +83,11 @@ def main(config: DictConfig) -> None:
     # Compute Cartesian product
     combinations = list(itertools.product(*parameter_lists))
 
+    # Save base config to a temp file once
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".yaml", delete=False) as base_file:
+        OmegaConf.save(config=config, f=base_file.name)
+        base_config_path = base_file.name
+
     for combo in combinations:
         # Create a dot string for each combination
         combo_dot_strings = [f"{key}={value}" for key, value in zip(keys, combo)]
@@ -90,7 +101,29 @@ def main(config: DictConfig) -> None:
 
         print(combo_dot_strings)
 
-        launch_evaluation(config, OmegaConf.from_dotlist(combo_dot_strings))
+        # Save override config for this combo
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".yaml", delete=False) as override_file:
+            override_cfg = OmegaConf.from_dotlist(combo_dot_strings)
+            OmegaConf.save(config=override_cfg, f=override_file.name)
+            override_config_path = override_file.name
+
+        print("Launching:", combo_dot_strings)
+        # Use Popen to stream output live
+        process = subprocess.Popen(
+            [sys.executable, "drivers/scripts/experiments/launch_evaluation.py", base_config_path, override_config_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        # # Read and print output line-by-line as it's generated
+        # with process.stdout:
+        #     for line in iter(process.stdout.readline, ''):
+        #         print(f"[{combo_name}] {line}", end='')
+
+        process.wait()
+        print(f"[{combo_name}] Completed with return code {process.returncode}")
 
 
 if __name__ == "__main__":
