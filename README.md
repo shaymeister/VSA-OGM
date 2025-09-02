@@ -23,7 +23,7 @@ It has currently been tested on MacOS and Ubuntu with CPU and CUDA 12.2. Other o
 ### Datasets
 
 - Toy Sim (Single Agent): included in `datasets`
-- Toy Sim (Fusion): download [Agent 1](https://gmuedu-my.sharepoint.com/:u:/g/personal/ssnyde9_gmu_edu/EVNScsJma1lMpQmTgLmBmBoBaVgLRgwrIcVRiWLAOtHiqA?e=GrE7eq) and [Agent 2](https://gmuedu-my.sharepoint.com/:u:/g/personal/ssnyde9_gmu_edu/ETE2c01yROlIkH3-gLSo7vsBIKKOt1S_fgdVfthFgEgW3Q?e=aEAXiM)
+- Toy Sim (Fusion): please reach out to the corresponding author
 - Intel (Single Agent): included in `datasets`
 - Intel (Fusion): generate with [this notebook](./drivers/notebooks/datasets/intel_map_fusion_data.ipynb)
 - EviLOG: download according to [their repository](https://github.com/ika-rwth-aachen/EviLOG)
