@@ -8,18 +8,6 @@ In this application of bio-inspired vector symbolic architectures, we employ a n
 
 ---
 
-### Directory Structure
-
-- **dataloaders**: individual classes to lead different dataset formats
-- **datasets**: the Intel map and single-agent toysim datasets
-- **experiments**: script files to run the single and multi-agent experiments with the toysim and Intel datasets
-- **notebooks**: tools to evaluate against EviLOG, run the ablation study, evaluate runtime performance, and perform Shannon-based entropy extraction
-- **metrics.py**: functions to calculate TP and FP rates along with AUC
-- **plotting.py**: functions to visualize statistical results
-- **utilities.py**: functions to split training dataset into train and test sets
-
----
-
 ###
 
 The VSA-OGM is wrapped together as a single pip package. You must pre-install pytorch depending on your specific machine and the semantic pointer library (spl). SPL is included in this repo as a second directory. You can locally install the library with the following command:
@@ -39,16 +27,6 @@ It has currently been tested on MacOS and Ubuntu with CPU and CUDA 11.7. Other o
 - Intel (Single Agent): included in `datasets`
 - Intel (Fusion): generate with [this notebook](./notebooks/datasets/intel_map_fusion_data.ipynb)
 - EviLOG: download according to [their repository](https://github.com/ika-rwth-aachen/EviLOG)
-
----
-
-### Experiments
-
-Both the Intel map and Toy sim single agent experiments can be recreated with `vsa_map_single.py` in the `experiments` directory.
-
-Conversely, the fusion experiments can be duplicated with `vsa_map_fusion.py` in the same directory. The runtime processing and entropy based information extraction were done with Jupyter in the `notebooks` directory.
-
-We trained EviLOG with the author's codebase. Our evaluation on their dataset was conducted with Jupyter in the `notebooks/datasets` directory.
 
 ---
 
