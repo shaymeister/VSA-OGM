@@ -16,7 +16,7 @@ The VSA-OGM is wrapped together as a single pip package. You must pre-install py
 python -m pip install .
 ```
 
-It has currently been tested on MacOS and Ubuntu with CPU and CUDA 11.7. Other operating systems and CUDA versions should be supported but it has not been formally tested.
+It has currently been tested on MacOS and Ubuntu with CPU and CUDA 12.2. Other operating systems and CUDA versions should be supported but it has not been formally tested.
 
 ---
 
@@ -37,7 +37,7 @@ It has currently been tested on MacOS and Ubuntu with CPU and CUDA 11.7. Other o
 - **David Gorsich**: [david.j.gorsich.civ@army.mil](david.j.gorsich.civ@army.mil)
 - **Maryam Parsa**: [mparsa@gmu.edu](mparsa@gmu.edu)
 
-If you have any issues, questions, comments, or concerns about Highfrost, please reach out to the corresponding author (**). We will respond as soon as possible.
+If you have any issues, questions, comments, or concerns about VSA-OGM, please reach out to the corresponding author (**). We will respond as soon as possible.
 
 ---
 
